@@ -55,7 +55,7 @@ class Encoder(nn.Module):
         # self.patches = PatchPartition(dim, patch_size * 2, False)
         self.patches = EncoderDownLayer(
             dim, window_size, shift_size, num_contrats, num_heads, patch_size * 2, False)
-
+        num_layers -= 1
         self.down_layers = nn.ModuleList([
             EncoderDownLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
                              num_contrats, num_heads, patch_size)
@@ -122,7 +122,7 @@ class DecoderUpLayer(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, dim, num_layers, window_size, shift_size, num_contrats, num_heads, patch_size=2):
         super(Decoder, self).__init__()
-
+        num_layers -= 1
         self.up_layers = nn.ModuleList([
             DecoderUpLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
                            num_contrats, num_heads, patch_size)

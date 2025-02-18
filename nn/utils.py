@@ -94,8 +94,8 @@ def create_attention_mask(M, N, H, W, num_heads, window_size: Tuple[int, int], s
 
     q_proj = q_proj.view(-1, 1,  M * window_size[0] * window_size[1])
     kv_proj = kv_proj.view(-1, 1, N * window_size[0] * window_size[1])
-
-    attn_mask = q_proj[:, :, :, None] - kv_proj[:, :, None, :]
+    # or attn_mask = q_proj[:, :, :, None] - kv_proj[:, :, None, :] ?
+    attn_mask = q_proj[0:1, :, :, None] - kv_proj[0:1, :, None, :]
     attn_mask = attn_mask.masked_fill(
         attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
     return attn_mask

@@ -35,8 +35,9 @@ class TestEncoderUpLayer(unittest.TestCase):
 class TestEncoder(unittest.TestCase):
     def test_encoder(self):
         x = torch.rand(1, 3, 128, 128, 16)
-        encoder = Encoder(16, 3, (4, 4), (2, 2), 4, 2)
+        encoder = Encoder(16, 4, (4, 4), (2, 2), 4, 2)
         outputs = encoder(x, [0, 1, 2])
+        print("outputs: ", [output.shape for output in outputs])
         self.assertEqual(outputs[-1].shape, (1, 3, 32, 32, 256))
 
 
@@ -58,10 +59,10 @@ class TestDecoderUpLayer(unittest.TestCase):
 class TestDecoder(unittest.TestCase):
     def test_decoder(self):
         x = torch.rand(1, 3, 128, 128, 16)
-        encoder = Encoder(16, 3, (4, 4), (2, 2), 4, 2)
+        encoder = Encoder(16, 4, (4, 4), (2, 2), 4, 2)
         outputs = encoder(x, [0, 1, 2])
         [print(output.shape) for output in outputs]
-        decoder = Decoder(16, 3, (4, 4), (2, 2), 4, 2)
+        decoder = Decoder(16, 4, (4, 4), (2, 2), 4, 2)
         B, M, H, W, C = outputs[0].shape
         noise = torch.rand(B, 1, H, W, C)
         y = decoder(noise, outputs, [
