@@ -93,4 +93,6 @@ class TestMultiContrastDecoder(unittest.TestCase):
             dim=16, window_size=(4, 4), shift_size=(2, 2), num_contrasts=8, num_heads=2)
 
         # Forward pass
-        y = multi_contrast_decoder(x, features, [[2, 3, 5], [0, 1, 4, 6, 7]])
+        y = multi_contrast_decoder(x, features, [[0, 1, 4, 6, 7], [2, 3, 5]])
+
+        self.assertEqual(y.shape, (1, 3, 8, 8, 16))

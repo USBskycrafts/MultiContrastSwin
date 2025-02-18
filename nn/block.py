@@ -1,3 +1,4 @@
+from re import A
 from typing import List
 
 import torch
@@ -41,8 +42,10 @@ class WindowAttention(nn.Module):
 
     def forward(self, q, k, v, selected_contrasts: Tuple[List[int], List[int]], mask=None):
         assert k.shape == v.shape
-        assert q.shape[1] == len(selected_contrasts[0])
-        assert k.shape[1] == len(selected_contrasts[1])
+        assert q.shape[1] == len(
+            selected_contrasts[0]), f'{q.shape[1]} != {len(selected_contrasts[0])}'
+        assert k.shape[1] == len(
+            selected_contrasts[1]), f'{k.shape[1]} != {len(selected_contrasts[1])}'
 
         M, N = q.shape[1], k.shape[1]
         H, W = q.shape[2], q.shape[3]
@@ -149,7 +152,8 @@ class MultiContrastDecoderBlock(nn.Module):
     def forward(self, x, encoded_features, selected_contrasts):
         B, M, H, W, C = x.shape
         N = encoded_features.shape[1]
-        assert x.shape[2:] == encoded_features.shape[2:]
+        assert x.shape[2:] == encoded_features.shape[2:], print(
+            x.shape, encoded_features.shape)
 
         if self.shift_size[0] > 0 and self.shift_size[1] > 0:
             x = torch.roll(
@@ -158,17 +162,59 @@ class MultiContrastDecoderBlock(nn.Module):
             M, M, H, W, self.num_heads, self.window_size, self.shift_size)
         mask = mask.to(x.device)
         x = x + self.attn1(self.norm1(x), self.norm1(x),
-                           self.norm1(x), (selected_contrasts[0], selected_contrasts[0]), mask)
+                           self.norm1(x), (selected_contrasts[1], selected_contrasts[1]), mask)
 
         mask = create_attention_mask(
             M, N, H, W, self.num_heads, self.window_size, self.shift_size)
         mask = mask.to(x.device)
         x = x + self.attn2(self.norm2(x), encoded_features,
-                           encoded_features, selected_contrasts, mask)
+                           encoded_features, (selected_contrasts[1], selected_contrasts[0]), mask)
 
         if self.shift_size[0] > 0 and self.shift_size[1] > 0:
             x = torch.roll(
                 x, shifts=(self.shift_size[0], self.shift_size[1]), dims=(2, 3))
 
         x = x + self.mlp(self.norm3(x))
+        return x
+
+
+class PatchPartition(nn.Module):
+    def __init__(self, dim, patch_size, reduction=True):
+        super().__init__()
+        self.dim = dim
+        self.patch_size = patch_size
+        self.reduction = reduction
+
+        if reduction:
+            self.proj = nn.Linear(
+                dim * (patch_size ** 2), dim * patch_size)
+
+    def forward(self, x):
+        B, M, H, W, C = x.shape
+        x = x.reshape(B, M, H // self.patch_size, self.patch_size,
+                      W // self.patch_size, self.patch_size, C)
+        x = x.permute(0, 1, 2, 4, 3, 5, 6).contiguous()
+        x = x.view(B, M, H // self.patch_size, W // self.patch_size, -1)
+        if self.reduction:
+            x = self.proj(x)
+        return x
+
+
+class PatchExpansion(nn.Module):
+    def __init__(self, dim, patch_size, reduction=True):
+        super().__init__()
+        self.dim = dim
+        self.patch_size = patch_size
+        self.reduction = reduction
+
+        if reduction:
+            self.proj = nn.Linear(dim // (patch_size ** 2), dim // patch_size)
+
+    def forward(self, x):
+        B, M, H, W, C = x.shape
+        x = x.view(B, M, H, W, self.patch_size, self.patch_size, -1)
+        x = x.permute(0, 1, 2, 4, 3, 5, 6).contiguous()
+        x = x.view(B, M, H * self.patch_size, W * self.patch_size, -1)
+        if self.reduction:
+            x = self.proj(x)
         return x
