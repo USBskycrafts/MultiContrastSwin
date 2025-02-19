@@ -1,6 +1,6 @@
 import unittest
 
-from nn.module import *
+from multicontrast.nn.module import *
 
 
 class TestEncoderDownLayer(unittest.TestCase):

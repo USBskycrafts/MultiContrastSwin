@@ -1,7 +1,7 @@
 import unittest
 import torch
-from nn.block import *
-from nn.utils import create_attention_mask
+from multicontrast.nn.block import *
+from multicontrast.nn.utils import create_attention_mask
 
 
 class TestWindowAttention(unittest.TestCase):
