@@ -23,12 +23,16 @@ class MultiContrastSwinTransformer(nn.Module):
         self.decoder = Decoder(dim, num_layers, window_size,
                                shift_size, num_contrats, num_heads, patch_size)
 
-    def forward(self, x, selected_contrats):
+    def forward(self, x, selected_contrats, sample_times=1):
         x = self.image_encoding(x, selected_contrats[0])
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
-        noise = torch.rand(B, len(selected_contrats[1]), H, W, C)
-        decoded_features = self.decoder(
-            noise, encoded_features, selected_contrats)
-        y = self.image_decoding(decoded_features, selected_contrats[1])
-        return y
+
+        generation = []
+        for i in range(sample_times):
+            noise = torch.rand(B, len(selected_contrats[1]), H, W, C)
+            decoded_features = self.decoder(
+                noise, encoded_features, selected_contrats)
+            y = self.image_decoding(decoded_features, selected_contrats[1])
+            generation.append(y)
+        return torch.mean(torch.stack(generation), dim=0)

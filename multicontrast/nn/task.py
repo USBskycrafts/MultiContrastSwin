@@ -1,7 +1,6 @@
 from abc import abstractmethod
 from typing import List
 
-import torch
 import torch.nn as nn
 
 from multicontrast.nn.model import MultiContrastSwinTransformer
@@ -12,7 +11,10 @@ class BaseModel(nn.Module):
         super().__init__()
 
     def forward(self, *args, **kwargs):
-        self.predict(*args, **kwargs)
+        if self.training:
+            return self.loss(*args, **kwargs)
+        else:
+            return self.predict(*args, **kwargs)
 
     @abstractmethod
     def loss(self, *args, **kwargs):
@@ -29,20 +31,12 @@ class MultiModalityGeneration(BaseModel):
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.loss_fn = nn.L1Loss()
 
-    def loss(self, x, selected_contrasts, y=None, lambdas: List[int] = [5, 20]):
-        contrasts = [i for i in range(self.model.num_contrats)]
-        generated_contrasts = [
-            c for c in contrasts if c not in selected_contrasts]
-        if y is None:
-            y = x[:, generated_contrasts, ...]
-            x = x[:, selected_contrasts, ...]
-
-        pred = self.model(x, [selected_contrasts, generated_contrasts])
-        recon = self.model(x, [selected_contrasts, selected_contrasts])
+    def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1, lambdas: List[int] = [5, 20]):
+        pred = self.model(
+            x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
+        recon = self.model(
+            x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
         return self.loss_fn(pred, y) * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
 
-    def predict(self, x, selected_contrasts: List[int]):
-        contrasts = [i for i in range(self.model.num_contrats)]
-        generated_contrasts = [
-            c for c in contrasts if c not in selected_contrasts]
-        return self.model(x, [selected_contrasts, generated_contrasts])
+    def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
+        return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
