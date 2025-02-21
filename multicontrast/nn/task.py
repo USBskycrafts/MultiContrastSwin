@@ -31,12 +31,13 @@ class MultiModalityGeneration(BaseModel):
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.loss_fn = nn.L1Loss()
 
-    def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1, lambdas: List[int] = [5, 20]):
+    def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(
             x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
         recon = self.model(
             x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
-        return self.loss_fn(pred, y) * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
+        # * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
+        return self.loss_fn(pred, y)
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
