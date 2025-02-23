@@ -7,7 +7,7 @@ from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
 from ignite.metrics import PSNR, SSIM, RunningAverage
-from nn.task import MultiModalityGeneration
+from multicontrast.nn.task import MultiModalityGeneration
 from skimage.io import imsave
 from torch.cuda.amp.autocast_mode import autocast
 
@@ -19,8 +19,8 @@ class BaseValidator(metaclass=ABCMeta):
 
     def validate(self, data_loader):
         data_loader = auto_dataloader(data_loader)
-        psnr = RunningAverage(PSNR(data_range=1, device=distributed.device()))
-        ssim = RunningAverage(SSIM(data_range=1, device=distributed.device()))
+        psnr = PSNR(data_range=1, device=distributed.device())
+        ssim = SSIM(data_range=1, device=distributed.device())
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
         self.register_events(Events.COMPLETED, lambda *_: print(

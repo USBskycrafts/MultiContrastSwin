@@ -30,7 +30,8 @@ class MultiContrastSwinTransformer(nn.Module):
 
         generation = []
         for i in range(sample_times):
-            noise = torch.rand(B, len(selected_contrats[1]), H, W, C)
+            noise = torch.rand(
+                B, len(selected_contrats[1]), H, W, C).to(x.device)
             decoded_features = self.decoder(
                 noise, encoded_features, selected_contrats)
             y = self.image_decoding(decoded_features, selected_contrats[1])

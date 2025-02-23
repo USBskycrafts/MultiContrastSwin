@@ -7,22 +7,28 @@ from ignite.engine import Engine, Events
 from ignite.handlers import (Checkpoint, TensorboardLogger, TerminateOnNan,
                              global_step_from_engine)
 from ignite.metrics import PSNR, SSIM, RunningAverage
-from nn.task import MultiModalityGeneration
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
+from multicontrast.nn.task import MultiModalityGeneration
+
 
 class BaseTrainer(metaclass=ABCMeta):
-    def __init__(self, data_loader):
-        self.data_loader = auto_dataloader(data_loader)
-
+    def __init__(self):
         self.engine = Engine(lambda engine, batch: self._train_step(batch))
 
-    def train(self, num_epochs, *args, **kwargs):
+    def train(self, data_loader, num_epochs, *args, **kwargs):
+        """_summary_
+
+        Args:
+            num_epochs,
+            every_save,
+            save_handler,
+        """
         self._set_checkpoint(*args, **kwargs)
         self.register_events(Events.ITERATION_COMPLETED,
                              TerminateOnNan())
-        self.engine.run(self.data_loader, num_epochs)
+        self.engine.run(data_loader, num_epochs)
 
     @abstractmethod
     def _train_step(self, batch):
@@ -30,7 +36,6 @@ class BaseTrainer(metaclass=ABCMeta):
             "This method should be overridden by subclasses.")
 
     def validate(self, data_loader):
-        data_loader = auto_dataloader(data_loader)
         validator = Engine(
             lambda engine, batch: self._validate_step(batch))
         if self.log_dir is not None:
@@ -42,8 +47,8 @@ class BaseTrainer(metaclass=ABCMeta):
                 metrics={"psnr", "ssim"},
                 global_step_tranforms=global_step_from_engine(self.engine)
             )
-        psnr = RunningAverage(PSNR(data_range=1, device=distributed.device()))
-        ssim = RunningAverage(SSIM(data_range=1, device=distributed.device()))
+        psnr = PSNR(data_range=1, device=distributed.device())
+        ssim = SSIM(data_range=1, device=distributed.device())
         psnr.attach(validator, "psnr")
         ssim.attach(validator, "ssim")
         validator.run(data_loader, 1)
@@ -86,8 +91,8 @@ class BaseTrainer(metaclass=ABCMeta):
 
 
 class SupervisedTrainer(BaseTrainer):
-    def __init__(self, model: MultiModalityGeneration, optimizer, data_loader):
-        super().__init__(data_loader)
+    def __init__(self, model: MultiModalityGeneration, optimizer):
+        super().__init__()
         self.model = auto_model(model)
         self.optimizer = auto_optim(optimizer)
         self.scaler = GradScaler()
@@ -119,6 +124,7 @@ class SupervisedTrainer(BaseTrainer):
                                         score_name='psnrxssim',
                                         score_function=lambda engine: engine.state.metrics['psnr'] *
                                         engine.state.metrics['ssim'],
+                                        n_saved=10,
                                         **kwargs))
 
     def load_environment(self, checkpoint):

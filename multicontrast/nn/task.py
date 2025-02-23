@@ -34,8 +34,8 @@ class MultiModalityGeneration(BaseModel):
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(
             x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
-        recon = self.model(
-            x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
+        # recon = self.model(
+        #     x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
         # * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
         return self.loss_fn(pred, y)
 

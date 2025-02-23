@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 
 class MultiModalMRIDataset(Dataset):
-    def __init__(self, root_dir, modalities, slice_axis=2, transform=None, use_cache=False):
+    def __init__(self, root_dir, modalities, slice_axis=2, transform=None, use_cache=True):
         """
         参数:
             root_dir (str): 包含样本子目录的根目录
@@ -70,7 +70,7 @@ class MultiModalMRIDataset(Dataset):
             basename = os.path.basename(sample_path)
             img = nib.nifti1.load(os.path.join(
                 sample_path, f"{basename}_{modality}.nii.gz"))
-            # img = nib.funcs.as_closest_canonical(img)  # 标准化方向
+            img = nib.funcs.as_closest_canonical(img)  # 标准化方向
             data = img.get_fdata(dtype=np.float32)
             data = self._normalize(data)
             volumes.append(data)
@@ -107,20 +107,38 @@ class MultiModalMRIDataset(Dataset):
 
         return slice_data
 
+
+class MultiModalGenerationDataset(MultiModalMRIDataset):
+    def __init__(self, root_dir, modalities, transform=None, use_cache=False,
+                 selected_contrasts=None, generated_contrasts=None):
+        # using axis=2 to extract slices along the third dimension (depth)
+        super().__init__(root_dir, modalities, 2, transform, use_cache)
+        self.selected_contrasts = selected_contrasts
+        self.generated_contrasts = generated_contrasts
+
     def collate_fn(self, batch):
         # 将batch中的数据拼接成一个Tensor
         batch = [item for item in batch if item is not None]
         batch = torch.stack(batch, dim=0)
 
+        # crop to 192x160
+        batch = batch[:, :, 34:226, 40:-40, :]
+
         num_contrasts = len(self.modalities)
 
-        selected_contrasts = np.random.choice(
-            num_contrasts, np.random.randint(1, num_contrasts), replace=False)
-        selected_contrasts = sorted(selected_contrasts)
+        if self.selected_contrasts is None:
+            selected_contrasts = np.random.choice(
+                num_contrasts, np.random.randint(1, num_contrasts), replace=False)
+            selected_contrasts = sorted(selected_contrasts)
+        else:
+            selected_contrasts = self.selected_contrasts
 
-        generated_contrasts = np.random.choice(
-            num_contrasts, np.random.randint(1, num_contrasts), replace=False)
-        generated_contrasts = sorted(generated_contrasts)
+        if self.generated_contrasts is None:
+            generated_contrasts = np.random.choice(
+                num_contrasts, np.random.randint(1, num_contrasts), replace=False)
+            generated_contrasts = sorted(generated_contrasts)
+        else:
+            generated_contrasts = self.generated_contrasts
 
         return {
             'x': batch[:, selected_contrasts],
