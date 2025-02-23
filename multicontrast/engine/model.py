@@ -25,13 +25,10 @@ class Model(metaclass=ABCMeta):
         print(f'Loading config from {config}, {dataset_cfg_path}')
 
         # Init distributed config
+        num_gpus = literal_eval(os.getenv("CUDA_VISIBLE_DEVICES", '1'))
         self.distributed_config = {
             'backend': self.config['distributed']['backend'],
-            'nproc_per_node': int(self.config['distributed']['nproc_per_node']),
-            'nnodes': int(os.getenv('CUDA_VISIBLE_DEVICES', '1')),
-            'node_rank': int(self.config['distributed']['node_rank']),
-            'master_addr': self.config['distributed']['master_addr'],
-            'master_port': int(self.config['distributed']['master_port'])
+            'nproc_per_node': 1 if num_gpus == 1 else len(num_gpus),
         }
 
     def train(self):

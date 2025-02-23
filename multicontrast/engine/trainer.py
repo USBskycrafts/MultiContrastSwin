@@ -104,7 +104,8 @@ class SupervisedTrainer(BaseTrainer):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with autocast():
-            loss = self.model(x, selected_contrasts, generated_contrats, y)
+            loss = self.model(x, selected_contrasts,
+                              generated_contrats, y).mean()
         loss = self.scaler.scale(loss)
         if isinstance(loss, torch.Tensor):
             loss.backward()
