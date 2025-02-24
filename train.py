@@ -1,5 +1,6 @@
-from multicontrast.engine.model import MultiContrastGneration
+import os
 
+from multicontrast.engine.model import MultiContrastGeneration
 
-model = MultiContrastGneration()
+model = MultiContrastGeneration()
 model.train()

@@ -4,13 +4,15 @@ import ignite.distributed as distributed
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
 from ignite.engine import Engine, Events
-from ignite.handlers import (Checkpoint, TensorboardLogger, TerminateOnNan,
-                             global_step_from_engine)
-from ignite.metrics import PSNR, SSIM, RunningAverage
+from ignite.handlers import (Checkpoint, ProgressBar, TensorboardLogger,
+                             TerminateOnNan, global_step_from_engine)
+from ignite.metrics import RunningAverage
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
 from multicontrast.nn.task import MultiModalityGeneration
+from multicontrast.utils.metrics import StablePSNR as PSNR
+from multicontrast.utils.metrics import StableSSIM as SSIM
 
 
 class BaseTrainer(metaclass=ABCMeta):
@@ -28,6 +30,10 @@ class BaseTrainer(metaclass=ABCMeta):
         self._set_checkpoint(*args, **kwargs)
         self.register_events(Events.ITERATION_COMPLETED,
                              TerminateOnNan())
+        RunningAverage(output_transform=lambda x: x).attach(
+            self.engine, "loss")
+        ProgressBar(persist=False, desc="Training").attach(
+            self.engine, ["loss"])
         self.engine.run(data_loader, num_epochs)
 
     @abstractmethod
@@ -38,20 +44,24 @@ class BaseTrainer(metaclass=ABCMeta):
     def validate(self, data_loader):
         validator = Engine(
             lambda engine, batch: self._validate_step(batch))
+        psnr = PSNR(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+        ssim = SSIM(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+        psnr.attach(validator, "psnr")
+        ssim.attach(validator, "ssim")
         if self.log_dir is not None:
             logger = TensorboardLogger(self.log_dir)
             logger.attach_output_handler(
                 validator,
                 event_name=Events.ITERATION_COMPLETED,
                 tag="validation",
-                metrics={"psnr", "ssim"},
-                global_step_tranforms=global_step_from_engine(self.engine)
+                metric_names=["psnr", "ssim"],
+                global_step_transform=global_step_from_engine(self.engine)
             )
-        psnr = PSNR(data_range=1, device=distributed.device())
-        ssim = SSIM(data_range=1, device=distributed.device())
-        psnr.attach(validator, "psnr")
-        ssim.attach(validator, "ssim")
         validator.run(data_loader, 1)
+        self.engine.state.metrics["psnr"] = validator.state.metrics["psnr"]
+        self.engine.state.metrics["ssim"] = validator.state.metrics["ssim"]
         return validator.state.metrics["psnr"], validator.state.metrics["ssim"]
 
     @abstractmethod
@@ -91,24 +101,24 @@ class BaseTrainer(metaclass=ABCMeta):
 
 
 class SupervisedTrainer(BaseTrainer):
-    def __init__(self, model: MultiModalityGeneration, optimizer):
+    def __init__(self, model, optimizer):
         super().__init__()
-        self.model = auto_model(model)
-        self.optimizer = auto_optim(optimizer)
+        self.model = model
+        self.optimizer = optimizer
         self.scaler = GradScaler()
 
     def _train_step(self, batch):
         self.model.train()
-        x = batch['x']
-        y = batch['y']
+        x = batch['x'].to(distributed.device())
+        y = batch['y'].to(distributed.device())
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with autocast():
             loss = self.model(x, selected_contrasts,
                               generated_contrats, y).mean()
-        loss = self.scaler.scale(loss)
-        if isinstance(loss, torch.Tensor):
-            loss.backward()
+        scaler_loss = self.scaler.scale(loss)
+        if isinstance(scaler_loss, torch.Tensor):
+            scaler_loss.backward()
         else:
             raise ValueError("Loss must be a tensor")
         self.scaler.step(self.optimizer)
@@ -157,8 +167,8 @@ class SupervisedTrainer(BaseTrainer):
 
     def _validate_step(self, batch):
         self.model.eval()
-        x = batch['x']
-        y = batch['y']
+        x = batch['x'].to(distributed.device())
+        y = batch['y'].to(distributed.device())
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():

@@ -6,10 +6,11 @@ import torch
 from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
-from ignite.metrics import PSNR, SSIM, RunningAverage
-from multicontrast.nn.task import MultiModalityGeneration
 from skimage.io import imsave
 from torch.cuda.amp.autocast_mode import autocast
+
+from multicontrast.utils.metrics import StablePSNR as PSNR
+from multicontrast.utils.metrics import StableSSIM as SSIM
 
 
 class BaseValidator(metaclass=ABCMeta):
@@ -19,8 +20,10 @@ class BaseValidator(metaclass=ABCMeta):
 
     def validate(self, data_loader):
         data_loader = auto_dataloader(data_loader)
-        psnr = PSNR(data_range=1, device=distributed.device())
-        ssim = SSIM(data_range=1, device=distributed.device())
+        psnr = PSNR(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+        ssim = SSIM(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
         self.register_events(Events.COMPLETED, lambda *_: print(
@@ -42,7 +45,7 @@ class BaseValidator(metaclass=ABCMeta):
 
 
 class SupervisedValidator(BaseValidator):
-    def __init__(self, model: MultiModalityGeneration, save_images=False, output_dir=None):
+    def __init__(self, model, save_images=False, output_dir=None):
         super().__init__()
         self.model = auto_model(model)
         self.save_images = save_images
@@ -50,8 +53,8 @@ class SupervisedValidator(BaseValidator):
 
     def _validate_step(self, batch):
         self.model.eval()
-        x = batch['x']
-        y = batch['y']
+        x = batch['x'].to(distributed.device())
+        y = batch['y'].to(distributed.device())
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():

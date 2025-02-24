@@ -1,4 +1,5 @@
 import os
+from typing import OrderedDict
 
 import nibabel as nib
 import numpy as np
@@ -8,7 +9,8 @@ from tqdm import tqdm
 
 
 class MultiModalMRIDataset(Dataset):
-    def __init__(self, root_dir, modalities, slice_axis=2, transform=None, use_cache=True):
+    def __init__(self, root_dir, modalities, slice_axis=2,
+                 transform=None, use_cache=True, cache_size=64):
         """
         参数:
             root_dir (str): 包含样本子目录的根目录
@@ -22,7 +24,8 @@ class MultiModalMRIDataset(Dataset):
         self.slice_axis = slice_axis
         self.transform = transform
         self.use_cache = use_cache
-        self.cache = {}
+        self.cache = OrderedDict()
+        self.cache_size = cache_size
 
         # 收集有效样本
         self.samples = []
@@ -59,6 +62,8 @@ class MultiModalMRIDataset(Dataset):
             num_slices = sample_shapes[slice_axis]
             self.slice_indices.extend(
                 [(sample_idx, slice_idx) for slice_idx in range(num_slices)])
+        print(f"Dataset loaded with {len(self.samples)} samples.")
+        print(f"Total number of slices: {len(self.slice_indices)}.")
 
     def __len__(self):
         return len(self.slice_indices)
@@ -88,10 +93,13 @@ class MultiModalMRIDataset(Dataset):
 
         # 从缓存或磁盘加载数据
         if self.use_cache and sample_idx in self.cache:
+            self.cache.move_to_end(sample_idx)
             volume = self.cache[sample_idx]
         else:
             volume = self._load_volume(sample_path)
             if self.use_cache:
+                if len(self.cache) > self.cache_size:
+                    self.cache.popitem(last=False)  # 移除最旧的缓存项
                 self.cache[sample_idx] = volume
 
         # 提取多模态切片 (M, H, W, 1)
@@ -109,7 +117,7 @@ class MultiModalMRIDataset(Dataset):
 
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
-    def __init__(self, root_dir, modalities, transform=None, use_cache=False,
+    def __init__(self, root_dir, modalities, transform=None, use_cache=True,
                  selected_contrasts=None, generated_contrasts=None):
         # using axis=2 to extract slices along the third dimension (depth)
         super().__init__(root_dir, modalities, 2, transform, use_cache)
