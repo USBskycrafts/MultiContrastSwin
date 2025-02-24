@@ -60,7 +60,7 @@ class MultiContrastGeneration(Model):
             "num_heads": config.getint('model', 'num_heads')
         }
         self.model = MultiModalityGeneration(**model_config)
-        self.model = auto_model(self.model)
+        self.model = auto_model(self.model, find_unused_parameters=True)
         self.optimizer = torch.optim.Adam(self.model.parameters(),
                                           lr=config.getfloat('train', 'learning_rate'))
         self.optimizer = auto_optim(self.optimizer)

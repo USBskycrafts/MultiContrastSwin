@@ -29,8 +29,7 @@ class MultiModalMRIDataset(Dataset):
 
         # 收集有效样本
         self.samples = []
-        pbar = tqdm(os.listdir(root_dir), desc="Collecting valid samples")
-        for sample_dir in pbar:
+        for sample_dir in os.listdir(root_dir):
             sample_path = os.path.join(root_dir, sample_dir)
             if os.path.isdir(sample_path):
                 valid = True
@@ -62,8 +61,6 @@ class MultiModalMRIDataset(Dataset):
             num_slices = sample_shapes[slice_axis]
             self.slice_indices.extend(
                 [(sample_idx, slice_idx) for slice_idx in range(num_slices)])
-        print(f"Dataset loaded with {len(self.samples)} samples.")
-        print(f"Total number of slices: {len(self.slice_indices)}.")
 
     def __len__(self):
         return len(self.slice_indices)
@@ -83,9 +80,9 @@ class MultiModalMRIDataset(Dataset):
 
     def _normalize(self, volume):
         """3D Z-score归一化"""
-        mean = np.mean(volume)
-        std = np.std(volume)
-        return (volume - mean) / (std + 1e-8)
+        vmin = np.min(volume)
+        vmax = np.max(volume)
+        return (volume - vmin) / (vmax - vmin) if vmax != 0 else volume
 
     def __getitem__(self, idx):
         sample_idx, slice_idx = self.slice_indices[idx]
