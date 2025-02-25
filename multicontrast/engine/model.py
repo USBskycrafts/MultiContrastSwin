@@ -19,7 +19,6 @@ class Model(metaclass=ABCMeta):
         dataset_cfg_path = ROOT / 'config/dataset.ini'
         self.config = configparser.ConfigParser()
         self.config.read([config, dataset_cfg_path])
-        print(f'Loading config from {config}, {dataset_cfg_path}')
 
     def train(self, checkpoint_path=None):
         self._train(checkpoint_path)
