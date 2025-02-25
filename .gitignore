@@ -1,4 +1,4 @@
 .vscode
 **/__pycache__
-config/dataset.ini
-.DS_Store
+**/.DS_Store
+multicontrast/config/dataset.ini
