@@ -5,7 +5,6 @@ import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
 
 class MultiModalMRIDataset(Dataset):

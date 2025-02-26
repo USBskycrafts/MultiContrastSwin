@@ -54,12 +54,17 @@ class BaseTrainer(metaclass=ABCMeta):
             logger = TensorboardLogger(self.log_dir)
             logger.attach_output_handler(
                 validator,
-                event_name=Events.ITERATION_COMPLETED,
+                event_name=Events.COMPLETED,
                 tag="validation",
                 metric_names=["psnr", "ssim"],
                 global_step_transform=global_step_from_engine(self.engine)
             )
         validator.run(data_loader, 1)
+        validator.add_event_handler(
+            Events.COMPLETED,
+            lambda *_: print(f"""PSNR: {validator.state.metrics["psnr"]}\n
+                             SSIM: {validator.state.metrics["ssim"]}"""),
+        )
         self.engine.state.metrics["psnr"] = validator.state.metrics["psnr"]
         self.engine.state.metrics["ssim"] = validator.state.metrics["ssim"]
         return validator.state.metrics["psnr"], validator.state.metrics["ssim"]
