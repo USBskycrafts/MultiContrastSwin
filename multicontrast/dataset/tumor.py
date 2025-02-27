@@ -60,7 +60,7 @@ class MultiModalMRIDataset(Dataset):
                 sample_path, f"{basename}_{modalities[0]}.nii.gz")).shape
             num_slices = sample_shapes[slice_axis]
             self.slice_indices.extend(
-                [(sample_idx, slice_idx) for slice_idx in range(num_slices)])
+                [(sample_idx, slice_idx) for slice_idx in range(num_slices // 4, num_slices // 4 * 3)])
 
     def __len__(self):
         return len(self.slice_indices)
