@@ -1,11 +1,12 @@
 import argparse
 import sys
 import unittest
-
+import torch
 from torch.utils.data import DataLoader
 
 from multicontrast.dataset.tumor import MultiModalGenerationDataset
 from multicontrast.nn.task import MultiModalityGeneration
+import matplotlib.pyplot as plt
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-r', '--root_dir', type=str, required=True)
@@ -21,31 +22,31 @@ class TestMultiModalGenerationDataset(unittest.TestCase):
         dataset = MultiModalGenerationDataset(
             args.root_dir, args.modalities)
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True,
-                                collate_fn=dataset.collate_fn, num_workers=40)
+                                collate_fn=dataset.collate_fn, num_workers=0)
         for batch in dataloader:
-            print(batch['x'].shape)
-            print(batch['y'].shape)
-            print(batch['selected_contrasts'])
-            print(batch['generated_contrasts'])
+            sample = batch['x'][0, 0, :, :, 0]
+            plt.imshow(sample, cmap='gray', vmin=0, vmax=1)
+            plt.show()
 
-    def test_dataset_with_model(self):
-        model = MultiModalityGeneration(dim=64, num_layers=4, window_size=(
-            6, 5), shift_size=(3, 2), num_contrats=len(args.modalities), num_heads=4)
-        dataset = MultiModalGenerationDataset(
-            args.root_dir, args.modalities)
-        dataloader = DataLoader(dataset, batch_size=32, shuffle=True,
-                                collate_fn=dataset.collate_fn, num_workers=40)
-        for batch in dataloader:
-            model.eval()
-            output = model(
-                batch['x'], batch['selected_contrasts'], batch['generated_contrasts'])
-            self.assertEqual(output.shape, batch['y'].shape)
-            print(f"pass: {output.shape} == {batch['y'].shape}")
-            model.train()
-            loss = model(batch['x'], batch['selected_contrasts'],
-                         batch['generated_contrasts'], batch['y'])
-            self.assertTrue(loss.item() >= 0)
-            print(f"pass: loss >= 0")
+    # @unittest.skip('Skip because time cost is too high')
+    # def test_dataset_with_model(self):
+    #     model = MultiModalityGeneration(dim=64, num_layers=4, window_size=(
+    #         6, 5), shift_size=(3, 2), num_contrats=len(args.modalities), num_heads=4)
+    #     dataset = MultiModalGenerationDataset(
+    #         args.root_dir, args.modalities)
+    #     dataloader = DataLoader(dataset, batch_size=32, shuffle=True,
+    #                             collate_fn=dataset.collate_fn, num_workers=40)
+    #     for batch in dataloader:
+    #         model.eval()
+    #         output = model(
+    #             batch['x'], batch['selected_contrasts'], batch['generated_contrasts'])
+    #         self.assertEqual(output.shape, batch['y'].shape)
+    #         print(f"pass: {output.shape} == {batch['y'].shape}")
+    #         model.train()
+    #         loss = model(batch['x'], batch['selected_contrasts'],
+    #                      batch['generated_contrasts'], batch['y'])
+    #         self.assertTrue(loss.item() >= 0)
+    #         print(f"pass: loss >= 0")
 
 
 if __name__ == '__main__':

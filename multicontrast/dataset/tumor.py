@@ -113,7 +113,6 @@ class MultiModalMRIDataset(Dataset):
         sample_dataset_idx = int(Path(sample_path).stem.split('_')[1])
         sample_idx = int(sample_dataset_idx)
         return slice_data, sample_dataset_idx, slice_idx
-    
 
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
@@ -132,7 +131,7 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         idx = torch.tensor(idx)
 
         # crop to 192x160
-        batch = batch[:, :, 40:-40, 34:226, :]
+        batch = batch[:, :, 40:-40, -226:-34, :].rot90(k=1, dims=(2, 3))
 
         num_contrasts = len(self.modalities)
 

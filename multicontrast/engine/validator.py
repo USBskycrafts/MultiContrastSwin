@@ -6,8 +6,8 @@ import torch
 from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
-import cv2
 from torch.cuda.amp.autocast_mode import autocast
+import matplotlib.pyplot as plt
 
 from multicontrast.utils.metrics import StablePSNR as PSNR
 from multicontrast.utils.metrics import StableSSIM as SSIM
@@ -69,8 +69,8 @@ class SupervisedValidator(BaseValidator):
                 for j, img in enumerate(images):
                     sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{generated_contrats}_pred.png'
                     sample = os.path.join(self.output_dir, sample)
-                    cv2.imwrite(
-                        sample, (img.clamp(0, 1).cpu() * 255).int().numpy())
+                    plt.imsave(sample, img.clamp(0, 1).cpu(),
+                               vmin=0, vmax=1, cmap='gray')
 
         return pred, y
 
