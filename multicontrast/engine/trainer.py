@@ -151,25 +151,6 @@ class SupervisedTrainer(BaseTrainer):
              'scaler': self.scaler},
             checkpoint=checkpoint
         )
-    # def validate(self, data_loader):
-    #     data_loader = auto_dataloader(data_loader)
-    #     validator = Engine(
-    #         lambda engine, batch: self._validate_step(batch))
-    #     if self.log_dir is not None:
-    #         logger = TensorboardLogger(self.log_dir)
-    #         logger.attach_output_handler(
-    #             validator,
-    #             event_name=Events.ITERATION_COMPLETED,
-    #             tag="validation",
-    #             metrics={"psnr", "ssim"},
-    #             global_step_tranforms=global_step_from_engine(self.engine)
-    #         )
-    #     psnr = RunningAverage(PSNR(data_range=1, device=distributed.device()))
-    #     ssim = RunningAverage(SSIM(data_range=1, device=distributed.device()))
-    #     psnr.attach(validator, "psnr")
-    #     ssim.attach(validator, "ssim")
-    #     validator.run(data_loader, 1)
-    #     return validator.state.metrics["psnr"], validator.state.metrics["ssim"]
 
     def _validate_step(self, batch):
         self.model.eval()
@@ -182,27 +163,97 @@ class SupervisedTrainer(BaseTrainer):
                 pred = self.model(x, selected_contrasts, generated_contrats)
         return pred, y
 
-    # def train(self, num_epochs, every_save, *args, **kwargs):
-    #     self.register_events(Events.EPOCH_COMPLETED(every=every_save),
-    #                          ModelCheckpoint(*args, **kwargs))
-    #     self.engine.run(self.data_loader, num_epochs)
 
-    # def register_events(self, event_name, handler):
-    #     self.engine.add_event_handler(event_name, handler)
+class GANTrainer(BaseTrainer):
+    def __init__(self,
+                 generator,
+                 discriminator,
+                 g_optim,
+                 d_optim):
+        super().__init__()
+        self.generator = generator
+        self.discriminator = discriminator
+        self.g_optim = g_optim
+        self.d_optim = d_optim
 
-    # def register_tensorboard(self, log_dir):
-    #     self.log_dir = log_dir
-    #     tb_logger = TensorboardLogger(log_dir)
-    #     tb_logger.attach_output_handler(
-    #         self.engine,
-    #         event_name=Events.ITERATION_COMPLETED,
-    #         tag="training",
-    #         output_transform=lambda loss: {"loss": loss}
-    #     )
+        self.g_scaler = GradScaler()
+        self.d_scaler = GradScaler()
 
-    # def register_validation(self, data_loader, every_epochs):
-    #     self.engine.add_event_handler(
-    #         Events.EPOCH_COMPLETED(every=every_epochs),
-    #         self.validate,
-    #         data_loader
-    #     )
+    def _train_step(self, batch):
+        self.generator.eval()
+        self.discriminator.train()
+        fake = self.generator(batch['x'],
+                              batch['selected_contrasts'],
+                              batch['generated_contrats'])
+        real = batch['y']
+        real_label = torch.ones_like(fake).to(distributed.device())
+        fake_label = torch.zeros_like(fake).to(distributed.device())
+        real_loss = self.discriminator(
+            real, batch['generated_contrasts'], real_label)
+        fake_loss = self.discriminator(
+            fake.detach(), batch['generated_contrasts'], fake_label)
+        d_loss = (real_loss + fake_loss) / 2
+        scaler_loss = self.d_scaler.scale(d_loss)
+        scaler_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
+        self.d_scaler.step(self.d_optim)
+        self.d_scaler.update()
+        self.d_optim.zero_grad()
+
+        self.generator.train()
+        g_l1_loss = self.generator(
+            batch['x'],
+            batch['selected_contrasts'],
+            batch['generated_contrasts'],
+            real
+        )
+        g_against_loss = self.discriminator(
+            fake,
+            batch['generated_contrasts'],
+            real_label
+        )
+        g_loss = g_l1_loss + g_against_loss
+        self.g_scaler.scale(g_loss).backward()
+        torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
+        self.g_scaler.step(self.g_optim)
+        self.g_scaler.update()
+        self.g_optim.zero_grad()
+
+        return torch.tensor([g_loss.item(), d_loss.item()])
+
+    def _validate_step(self, batch):
+        self.generator.eval()
+        with torch.no_grad():
+            fake = self.generator(
+                batch['x'],
+                batch['selected_contrasts'],
+                batch['generated_contrasts'],
+            )
+        return fake, batch['y']
+
+    def load_environment(self, checkpoint):
+        Checkpoint.load_objects({
+            'generator': self.generator,
+            'discriminator': self.discriminator,
+            'g_optim': self.g_optim,
+            'd_optim': self.d_optim,
+            'g_scaler': self.g_scaler,
+            'd_scaler': self.d_scaler,
+        }, checkpoint)
+
+    def _set_checkpoint(self, every_save, *args, **kwargs):
+        self.register_events(Events.EPOCH_COMPLETED(every=every_save),
+                             Checkpoint({
+                                 'generator': self.generator,
+                                 'discriminator': self.discriminator,
+                                 'g_optim': self.g_optim,
+                                 'd_optim': self.d_optim,
+                                 'g_scaler': self.g_scaler,
+                                 'd_scaler': self.d_scaler,
+                             },
+            *args,
+            score_name='psnrxssim',
+            score_function=lambda engine: engine.state.metrics['psnr'] *
+            engine.state.metrics['ssim'],
+            n_saved=10,
+            **kwargs))

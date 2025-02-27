@@ -259,6 +259,7 @@ class ImageDecoding(nn.Module):
         self.outc = nn.Sequential(
             nn.ReflectionPad2d(3),
             nn.Conv2d(in_channels, out_channels, 7),
+            nn.Sigmoid()
         )
 
     def forward(self, x):

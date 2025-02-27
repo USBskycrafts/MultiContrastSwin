@@ -121,18 +121,18 @@ class MultiContrastGeneration(Model):
         self.validator.validate(self.data_loader)
 
     def _predict(self, checkpoint_path):
-        self._prepare_eval_data(True)
+        self._prepare_eval_data(checkpoint_path, True)
         self.validator.load_environment(checkpoint_path)
         self.validator.validate(self.data_loader)
 
-    def _prepare_eval_data(self, save_image=False):
+    def _prepare_eval_data(self, checkpoint_path, save_image=False):
         self.validator = SupervisedValidator(self.model,
                                              output_dir=self.config.get(
                                                  'test', 'output_dir'),
                                              save_images=save_image)
-        self.validator.load_environment(self.config['checkpoint']['path'])
+        self.validator.load_environment(checkpoint_path)
 
-        if self.validation_dataset is None:
+        if getattr(self, 'validation_dataset', None) is None:
             self.validation_dataset = MultiModalGenerationDataset(
                 root_dir=self.config.get('test', 'root_dir'),
                 modalities=['t1', 't2', 'flair', 't1ce'],
@@ -144,9 +144,9 @@ class MultiContrastGeneration(Model):
 
         self.data_loader = auto_dataloader(
             self.validation_dataset,
-            batch_size=self.config.getint('val', 'batch_size'),
+            batch_size=self.config.getint('test', 'batch_size'),
             shuffle=False,
-            num_workers=self.config.getint('val', 'num_workers'),
+            num_workers=self.config.getint('test', 'num_workers'),
             pin_memory=True,
             drop_last=False,
             collate_fn=self.validation_dataset.collate_fn,

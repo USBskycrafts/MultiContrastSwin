@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import OrderedDict
 
 import nibabel as nib
@@ -109,7 +110,10 @@ class MultiModalMRIDataset(Dataset):
         if self.transform:
             slice_data = self.transform(slice_data)
 
-        return slice_data
+        sample_dataset_idx = int(Path(sample_path).stem.split('_')[1])
+        sample_idx = int(sample_dataset_idx)
+        return slice_data, sample_dataset_idx, slice_idx
+    
 
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
@@ -120,13 +124,15 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         self.selected_contrasts = selected_contrasts
         self.generated_contrasts = generated_contrasts
 
-    def collate_fn(self, batch):
+    def collate_fn(self, x):
         # 将batch中的数据拼接成一个Tensor
-        batch = [item for item in batch if item is not None]
+        batch = [item[0] for item in x if item is not None]
         batch = torch.stack(batch, dim=0)
+        idx = [(item[1], item[2]) for item in x if item is not None]
+        idx = torch.tensor(idx)
 
         # crop to 192x160
-        batch = batch[:, :, 34:226, 40:-40, :]
+        batch = batch[:, :, 40:-40, 34:226, :]
 
         num_contrasts = len(self.modalities)
 
@@ -149,4 +155,5 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
             'y': batch[:, generated_contrasts],
             'selected_contrasts': selected_contrasts,
             'generated_contrasts': generated_contrasts,
+            'idx': idx,
         }

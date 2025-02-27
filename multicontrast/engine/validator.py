@@ -6,7 +6,7 @@ import torch
 from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
-from skimage.io import imsave
+import cv2
 from torch.cuda.amp.autocast_mode import autocast
 
 from multicontrast.utils.metrics import StablePSNR as PSNR
@@ -19,7 +19,6 @@ class BaseValidator(metaclass=ABCMeta):
         self.engine = Engine(lambda engine, batch: self._validate_step(batch))
 
     def validate(self, data_loader):
-        data_loader = auto_dataloader(data_loader)
         psnr = PSNR(data_range=1, device=distributed.device(),
                     output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
         ssim = SSIM(data_range=1, device=distributed.device(),
@@ -64,12 +63,14 @@ class SupervisedValidator(BaseValidator):
         if self.save_images and self.output_dir is not None:
             # Save images for visualization
             # This is a placeholder for actual image saving logic
-            filenames = batch['filenames']
+            filenames = batch['idx']
+            assert filenames.shape == (x.shape[0], 2), filenames.shape
             for i, (filename, images) in enumerate(zip(filenames, pred)):
                 for j, img in enumerate(images):
-                    sample = filename + f'_pred_{j}.png'
+                    sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{generated_contrats}_pred.png'
                     sample = os.path.join(self.output_dir, sample)
-                    imsave(sample, img)
+                    cv2.imwrite(
+                        sample, (img.clamp(0, 1).cpu() * 255).int().numpy())
 
         return pred, y
 

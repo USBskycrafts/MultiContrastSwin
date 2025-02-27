@@ -37,3 +37,29 @@ class MultiContrastSwinTransformer(nn.Module):
             y = self.image_decoding(decoded_features, selected_contrats[1])
             generation.append(y)
         return torch.mean(torch.stack(generation), dim=0)
+
+
+class MultiContrastDiscriminator(nn.Module):
+    def __init__(self,
+                 dim,
+                 num_layers,
+                 window_size,
+                 shift_size,
+                 num_contrats,
+                 num_heads,
+                 patch_size=2):
+        super(MultiContrastDiscriminator, self).__init__()
+        self.patches = EncoderDownLayer(
+            dim, window_size, shift_size, num_contrats, num_heads, patch_size * 2, False)
+        num_layers -= 1
+        self.down_layers = nn.ModuleList([
+            EncoderDownLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
+                             num_contrats, num_heads, patch_size)
+            for i in range(num_layers)
+        ])
+
+    def forward(self, x, generated_contrats):
+        x = self.patches(x, generated_contrats)
+        for layer in self.down_layers:
+            x = layer(x, generated_contrats)
+        return x.mean()

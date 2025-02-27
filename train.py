@@ -1,3 +1,4 @@
+import argparse
 import os
 
 from ignite.distributed.launcher import Parallel
@@ -11,5 +12,9 @@ def train(local_rank):
 
 
 if __name__ == "__main__":
-    with Parallel('nccl', len(os.environ.get('CUDA_VISIBLE_DEVICES', '').split(','))) as parallel:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--gpus', default=None)
+    args = parser.parse_args()
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus if args.gpus else ''
+    with Parallel('nccl', nproc_per_node=len(args.gpus.split(',')), nnodes=1) as parallel:
         parallel.run(train)

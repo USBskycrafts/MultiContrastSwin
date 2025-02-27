@@ -41,3 +41,17 @@ class MultiModalityGeneration(BaseModel):
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
+
+
+class MultiContrastDiscriminator(BaseModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.model = MultiContrastDiscriminator(*args, **kwargs)
+        self.loss_fn = nn.BCEWithLogitsLoss()
+
+    def loss(self, x, generated_contrasts, label):
+        pred = self.model(x, generated_contrasts)
+        return self.loss_fn(pred, label)
+
+    def predict(self, x, generated_contrasts):
+        return self.model(x, generated_contrasts)
