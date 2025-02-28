@@ -226,15 +226,18 @@ class ImageEncoding(nn.Module):
 
         self.inc = nn.Sequential(
             nn.ReflectionPad2d(3),
-            nn.Conv2d(in_channels, out_channels, 7),
+            nn.Conv2d(in_channels, out_channels, 7, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(inplace=True),
         )
 
         self.convs = nn.Sequential(
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(out_channels, out_channels, 5, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(out_channels, out_channels, 5, padding=1),
+            nn.ReflectionPad2d(2),
+            nn.Conv2d(out_channels, out_channels, 5, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(inplace=True),
+            nn.ReflectionPad2d(2),
+            nn.Conv2d(out_channels, out_channels, 5),
         )
 
     def forward(self, x):
@@ -249,17 +252,17 @@ class ImageDecoding(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(in_channels, in_channels, 5, padding=1),
-            nn.ReLU(inplace=True),
-            nn.ReflectionPad2d(1),
-            nn.Conv2d(in_channels, in_channels, 5, padding=1),
+            nn.ReflectionPad2d(2),
+            nn.Conv2d(in_channels, in_channels, 5, bias=False),
+            nn.BatchNorm2d(in_channels),
+            nn.LeakyReLU(inplace=True),
+            nn.ReflectionPad2d(2),
+            nn.Conv2d(in_channels, in_channels, 5),
         )
 
         self.outc = nn.Sequential(
             nn.ReflectionPad2d(3),
             nn.Conv2d(in_channels, out_channels, 7),
-            nn.Sigmoid()
         )
 
     def forward(self, x):

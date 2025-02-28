@@ -79,10 +79,13 @@ class MultiModalMRIDataset(Dataset):
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
     def _normalize(self, volume):
-        """3D Z-score归一化"""
-        vmin = np.min(volume)
-        vmax = np.max(volume)
-        return (volume - vmin) / (vmax - vmin) if vmax != 0 else volume
+        # vmin = np.min(volume)
+        # vmax = np.max(volume)
+        # return (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else volume
+        # Z-score normalization
+        mean = np.mean(volume)
+        std = np.std(volume)
+        return (volume - mean) / std if std != 0 else volume
 
     def __getitem__(self, idx):
         sample_idx, slice_idx = self.slice_indices[idx]

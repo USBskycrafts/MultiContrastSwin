@@ -44,9 +44,9 @@ class BaseTrainer(metaclass=ABCMeta):
     def validate(self, data_loader):
         validator = Engine(
             lambda engine, batch: self._validate_step(batch))
-        psnr = PSNR(data_range=1, device=distributed.device(),
+        psnr = PSNR(data_range=2, device=distributed.device(),
                     output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
-        ssim = SSIM(data_range=1, device=distributed.device(),
+        ssim = SSIM(data_range=2, device=distributed.device(),
                     output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
         psnr.attach(validator, "psnr")
         ssim.attach(validator, "ssim")
