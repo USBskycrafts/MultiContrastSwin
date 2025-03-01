@@ -66,8 +66,18 @@ class SupervisedValidator(BaseValidator):
             filenames = batch['idx']
             assert filenames.shape == (x.shape[0], 2), filenames.shape
             for i, (filename, images) in enumerate(zip(filenames, pred)):
+                # i: batch index, filename: (sample_id, slice_id)
                 for j, img in enumerate(images):
-                    sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{generated_contrats}_pred.png'
+                    # j: modal index
+                    sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{j}_pred_modal.png'
+                    sample = os.path.join(self.output_dir, sample)
+                    plt.imsave(sample, img.cpu(),
+                               vmin=img.min(), vmax=img.max(), cmap='gray')
+            for i, (filename, images) in enumerate(zip(filenames, y)):
+                # i: batch index, filename: (sample_id, slice_id)
+                for j, img in enumerate(images):
+                    # j: modal index
+                    sample = f'{filename[0]}_{filename[1]}_{j}_gt_modal.png'
                     sample = os.path.join(self.output_dir, sample)
                     plt.imsave(sample, img.cpu(),
                                vmin=img.min(), vmax=img.max(), cmap='gray')

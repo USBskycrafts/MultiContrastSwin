@@ -2,7 +2,6 @@ from abc import ABCMeta, abstractmethod
 
 import ignite.distributed as distributed
 import torch
-from ignite.distributed import auto_dataloader, auto_model, auto_optim
 from ignite.engine import Engine, Events
 from ignite.handlers import (Checkpoint, ProgressBar, TensorboardLogger,
                              TerminateOnNan, global_step_from_engine)
@@ -10,7 +9,6 @@ from ignite.metrics import RunningAverage
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
-from multicontrast.nn.task import MultiModalityGeneration
 from multicontrast.utils.metrics import StablePSNR as PSNR
 from multicontrast.utils.metrics import StableSSIM as SSIM
 
@@ -126,7 +124,7 @@ class SupervisedTrainer(BaseTrainer):
             scaler_loss.backward()
         else:
             raise ValueError("Loss must be a tensor")
-        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.optimizer.zero_grad()
@@ -190,31 +188,42 @@ class GANTrainer(BaseTrainer):
         fake_label = torch.zeros_like(fake).to(distributed.device())
         real_loss = self.discriminator(
             real, batch['generated_contrasts'], real_label)
-        fake_loss = self.discriminator(
-            fake.detach(), batch['generated_contrasts'], fake_label)
+        with autocast():
+            fake_loss = self.discriminator(
+                fake.detach(), batch['generated_contrasts'], fake_label)
         d_loss = (real_loss + fake_loss) / 2
         scaler_loss = self.d_scaler.scale(d_loss)
+        if not isinstance(scaler_loss, torch.Tensor):
+            raise RuntimeError(
+                f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
+            )
         scaler_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
         self.d_scaler.update()
         self.d_optim.zero_grad()
 
         self.generator.train()
-        g_l1_loss = self.generator(
-            batch['x'],
-            batch['selected_contrasts'],
-            batch['generated_contrasts'],
-            real
-        )
-        g_against_loss = self.discriminator(
-            fake,
-            batch['generated_contrasts'],
-            real_label
-        )
+        with autocast():
+            g_l1_loss = self.generator(
+                batch['x'],
+                batch['selected_contrasts'],
+                batch['generated_contrasts'],
+                real
+            )
+            g_against_loss = self.discriminator(
+                fake,
+                batch['generated_contrasts'],
+                real_label
+            )
         g_loss = g_l1_loss + g_against_loss
-        self.g_scaler.scale(g_loss).backward()
-        torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
+        scaled_loss = self.g_scaler.scale(g_loss)
+        if not isinstance(scaled_loss, torch.Tensor):
+            raise RuntimeError(
+                f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
+            )
+        scaled_loss.backward()
+        # torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
         self.g_optim.zero_grad()
@@ -224,11 +233,12 @@ class GANTrainer(BaseTrainer):
     def _validate_step(self, batch):
         self.generator.eval()
         with torch.no_grad():
-            fake = self.generator(
-                batch['x'],
-                batch['selected_contrasts'],
-                batch['generated_contrasts'],
-            )
+            with autocast():
+                fake = self.generator(
+                    batch['x'],
+                    batch['selected_contrasts'],
+                    batch['generated_contrasts'],
+                )
         return fake, batch['y']
 
     def load_environment(self, checkpoint):
