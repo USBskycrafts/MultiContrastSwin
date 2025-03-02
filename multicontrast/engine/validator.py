@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 from multicontrast.utils.metrics import StablePSNR as PSNR
 from multicontrast.utils.metrics import StableSSIM as SSIM
+from multicontrast.utils.metrics import range_transform
 
 
 class BaseValidator(metaclass=ABCMeta):
@@ -19,10 +20,10 @@ class BaseValidator(metaclass=ABCMeta):
         self.engine = Engine(lambda engine, batch: self._validate_step(batch))
 
     def validate(self, data_loader):
-        psnr = PSNR(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
-        ssim = SSIM(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+        psnr = PSNR(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: range_transform((y[0].squeeze(-1), y[1].squeeze(-1))))
+        ssim = SSIM(data_range=1, device=distributed.device(),
+                    output_transform=lambda y: range_transform((y[0].squeeze(-1), y[1].squeeze(-1))))
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
         self.register_events(Events.COMPLETED, lambda *_: print(
@@ -58,7 +59,10 @@ class SupervisedValidator(BaseValidator):
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():
             with autocast():
-                pred = self.model(x, selected_contrasts, generated_contrats)
+                pred = self.model(x,
+                                  selected_contrasts,
+                                  generated_contrats,
+                                  5)
 
         if self.save_images and self.output_dir is not None:
             # Save images for visualization
