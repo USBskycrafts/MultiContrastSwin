@@ -125,7 +125,7 @@ class SupervisedTrainer(BaseTrainer):
             scaler_loss.backward()
         else:
             raise ValueError("Loss must be a tensor")
-        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.optimizer.zero_grad()
