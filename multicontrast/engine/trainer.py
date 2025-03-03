@@ -179,14 +179,15 @@ class GANTrainer(BaseTrainer):
         self.d_scaler = GradScaler()
 
     def _train_step(self, batch):
+        torch.autograd.set_detect_anomaly(True)
         self.generator.eval()
         self.discriminator.train()
         fake = self.generator(batch['x'],
                               batch['selected_contrasts'],
-                              batch['generated_contrats'])
+                              batch['generated_contrasts'])
         real = batch['y']
-        real_label = torch.ones_like(fake).to(distributed.device())
-        fake_label = torch.zeros_like(fake).to(distributed.device())
+        real_label = torch.tensor(1.0).to(distributed.device())
+        fake_label = torch.tensor(0.0).to(distributed.device())
         real_loss = self.discriminator(
             real, batch['generated_contrasts'], real_label)
         with autocast():

@@ -49,6 +49,8 @@ class MultiContrastDiscriminator(nn.Module):
                  num_heads,
                  patch_size=2):
         super(MultiContrastDiscriminator, self).__init__()
+        self.image_encoding = MultiContrastImageEncoding(
+            in_channels=1, out_channels=dim, num_contrats=num_contrats)
         self.patches = EncoderDownLayer(
             dim, window_size, shift_size, num_contrats, num_heads, patch_size * 2, False)
         num_layers -= 1
@@ -59,6 +61,7 @@ class MultiContrastDiscriminator(nn.Module):
         ])
 
     def forward(self, x, generated_contrats):
+        x = self.image_encoding(x, generated_contrats)
         x = self.patches(x, generated_contrats)
         for layer in self.down_layers:
             x = layer(x, generated_contrats)

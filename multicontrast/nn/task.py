@@ -3,7 +3,7 @@ from typing import List
 
 import torch.nn as nn
 
-from multicontrast.nn.model import MultiContrastSwinTransformer
+from multicontrast.nn.model import MultiContrastSwinTransformer, MultiContrastDiscriminator
 
 
 class BaseModel(nn.Module):
@@ -43,7 +43,7 @@ class MultiModalityGeneration(BaseModel):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
 
 
-class MultiContrastDiscriminator(BaseModel):
+class MultiContrastDiscrimination(BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.model = MultiContrastDiscriminator(*args, **kwargs)
