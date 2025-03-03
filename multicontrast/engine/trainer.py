@@ -181,15 +181,16 @@ class GANTrainer(BaseTrainer):
     def _train_step(self, batch):
         self.generator.eval()
         self.discriminator.train()
-        fake = self.generator(batch['x'],
+        x = batch['x'].to(distributed.device())
+        y = batch['y'].to(distributed.device())
+        fake = self.generator(x,
                               batch['selected_contrasts'],
                               batch['generated_contrasts'])
-        real = batch['y']
         real_label = torch.tensor(1.0).to(distributed.device())
         fake_label = torch.tensor(0.0).to(distributed.device())
         with autocast():
             real_loss = self.discriminator(
-                real, batch['generated_contrasts'], real_label)
+                y, batch['generated_contrasts'], real_label)
             fake_loss = self.discriminator(
                 fake.detach(), batch['generated_contrasts'], fake_label)
         d_loss = (real_loss + fake_loss) / 2
@@ -207,10 +208,10 @@ class GANTrainer(BaseTrainer):
         self.generator.train()
         with autocast():
             g_l1_loss = self.generator(
-                batch['x'],
+                x,
                 batch['selected_contrasts'],
                 batch['generated_contrasts'],
-                real
+                y
             )
             g_against_loss = self.discriminator(
                 fake,
@@ -233,14 +234,16 @@ class GANTrainer(BaseTrainer):
 
     def _validate_step(self, batch):
         self.generator.eval()
+        x = batch['x'].to(distributed.device())
+        y = batch['y'].to(distributed.device())
         with torch.no_grad():
             with autocast():
                 fake = self.generator(
-                    batch['x'],
+                    x,
                     batch['selected_contrasts'],
                     batch['generated_contrasts'],
                 )
-        return fake, batch['y']
+        return fake, y
 
     def load_environment(self, checkpoint):
         Checkpoint.load_objects({
