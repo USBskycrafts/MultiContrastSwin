@@ -187,9 +187,9 @@ class GANTrainer(BaseTrainer):
         real = batch['y']
         real_label = torch.tensor(1.0).to(distributed.device())
         fake_label = torch.tensor(0.0).to(distributed.device())
-        real_loss = self.discriminator(
-            real, batch['generated_contrasts'], real_label)
         with autocast():
+            real_loss = self.discriminator(
+                real, batch['generated_contrasts'], real_label)
             fake_loss = self.discriminator(
                 fake.detach(), batch['generated_contrasts'], fake_label)
         d_loss = (real_loss + fake_loss) / 2
