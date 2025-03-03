@@ -133,8 +133,8 @@ class Decoder(nn.Module):
                                       num_contrats, num_heads, patch_size * 2, reduction=False)
 
     def forward(self, x, encoded_features, selected_contrats):
-        for layer in self.up_layers:
-            x = layer(x, encoded_features.pop(0), selected_contrats)
-        x = self.expands(x, encoded_features.pop(0), selected_contrats)
+        for i, layer in enumerate(self.up_layers):
+            x = layer(x, encoded_features[i], selected_contrats)
+        x = self.expands(x, encoded_features[-1], selected_contrats)
 
         return x
