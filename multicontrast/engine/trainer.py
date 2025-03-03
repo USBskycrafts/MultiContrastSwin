@@ -179,7 +179,6 @@ class GANTrainer(BaseTrainer):
         self.d_scaler = GradScaler()
 
     def _train_step(self, batch):
-        torch.autograd.set_detect_anomaly(True)
         self.generator.eval()
         self.discriminator.train()
         fake = self.generator(batch['x'],
@@ -200,7 +199,7 @@ class GANTrainer(BaseTrainer):
                 f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
             )
         scaler_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
         self.d_scaler.update()
         self.d_optim.zero_grad()
@@ -225,7 +224,7 @@ class GANTrainer(BaseTrainer):
                 f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
             )
         scaled_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
         self.g_optim.zero_grad()
