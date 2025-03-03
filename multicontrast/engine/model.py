@@ -5,6 +5,7 @@ from ast import literal_eval
 
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
+import ignite.distributed as distributed
 
 from multicontrast.dataset.tumor import MultiModalGenerationDataset
 from multicontrast.engine.trainer import SupervisedTrainer
@@ -151,3 +152,9 @@ class MultiContrastGeneration(Model):
             drop_last=False,
             collate_fn=self.validation_dataset.collate_fn,
         )
+
+    def load_environment(self, checkpoint):
+        if isinstance(checkpoint, str):
+            checkpoint = torch.load(checkpoint,
+                                    map_location=distributed.device())
+        self.trainer.load_environment(checkpoint)
