@@ -2,6 +2,7 @@ import configparser
 import os
 from abc import ABCMeta, abstractmethod
 from ast import literal_eval
+from typing import Union
 
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
@@ -21,8 +22,11 @@ class Model(metaclass=ABCMeta):
         self.config = configparser.ConfigParser()
         self.config.read([config, dataset_cfg_path])
 
-    def train(self, checkpoint_path=None):
-        self._train(checkpoint_path)
+    def train(self, checkpoint_path: Union[str, None] = None):
+        if checkpoint_path is None:
+            self._train(checkpoint_path)
+        else:
+            self._train(torch.load(checkpoint_path, map_location='cpu'))
 
     @abstractmethod
     def _train(self, checkpoint_path):
