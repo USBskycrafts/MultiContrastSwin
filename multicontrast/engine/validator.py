@@ -20,10 +20,10 @@ class BaseValidator(metaclass=ABCMeta):
         self.engine = Engine(lambda engine, batch: self._validate_step(batch))
 
     def validate(self, data_loader):
-        psnr = PSNR(data_range=1, device=distributed.device(),
-                    output_transform=lambda y: range_transform((y[0].squeeze(-1), y[1].squeeze(-1))))
-        ssim = SSIM(data_range=1, device=distributed.device(),
-                    output_transform=lambda y: range_transform((y[0].squeeze(-1), y[1].squeeze(-1))))
+        psnr = PSNR(data_range=2, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+        ssim = SSIM(data_range=2, device=distributed.device(),
+                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
         self.register_events(Events.COMPLETED, lambda *_: print(
@@ -84,7 +84,7 @@ class SupervisedValidator(BaseValidator):
                     sample = f'{filename[0]}_{filename[1]}_{j}_gt_modal.png'
                     sample = os.path.join(self.output_dir, sample)
                     plt.imsave(sample, img.cpu(),
-                               vmin=img.min(), vmax=img.max(), cmap='gray')
+                               vmin=-1, vmax=1, cmap='gray')
 
         return pred, y
 
