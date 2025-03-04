@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import List
 
+import torch
 import torch.nn as nn
 
 from multicontrast.nn.model import MultiContrastSwinTransformer, MultiContrastDiscriminator
@@ -51,7 +52,12 @@ class MultiContrastDiscrimination(BaseModel):
 
     def loss(self, x, generated_contrasts, label):
         pred = self.model(x, generated_contrasts)
-        return self.loss_fn(pred, label)
+        if label.item() == 1:
+            return self.loss_fn(pred, torch.ones_like(pred))
+        elif label.item() == 0:
+            return self.loss_fn(pred, torch.zeros_like(pred))
+        else:
+            raise ValueError("Label must be 0 or 1")
 
     def predict(self, x, generated_contrasts):
         return self.model(x, generated_contrasts)

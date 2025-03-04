@@ -218,7 +218,7 @@ class GANTrainer(BaseTrainer):
                 batch['generated_contrasts'],
                 real_label
             )
-        g_loss = 10 * g_l1_loss + g_against_loss
+        g_loss = (5 * g_l1_loss + g_against_loss) / 6
         scaled_loss = self.g_scaler.scale(g_loss)
         if not isinstance(scaled_loss, torch.Tensor):
             raise RuntimeError(
