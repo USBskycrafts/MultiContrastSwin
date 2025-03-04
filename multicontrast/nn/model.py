@@ -59,10 +59,12 @@ class MultiContrastDiscriminator(nn.Module):
                              num_contrats, num_heads, patch_size)
             for i in range(num_layers)
         ])
+        
+        self.out_proj = nn.Linear(dim * (1 << num_layers) * patch_size ** 4, 1)
 
     def forward(self, x, generated_contrats):
         x = self.image_encoding(x, generated_contrats)
         x = self.patches(x, generated_contrats)
         for layer in self.down_layers:
             x = layer(x, generated_contrats)
-        return x.mean()
+        return self.out_proj(x).mean()
