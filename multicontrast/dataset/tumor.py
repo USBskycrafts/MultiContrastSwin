@@ -25,6 +25,7 @@ class MultiModalMRIDataset(Dataset):
         self.transform = transform
         self.use_cache = use_cache
         self.cache = OrderedDict()
+        self.min_max_cache = {}
         self.cache_size = cache_size
 
         # 收集有效样本
@@ -65,7 +66,7 @@ class MultiModalMRIDataset(Dataset):
     def __len__(self):
         return len(self.slice_indices)
 
-    def _load_volume(self, sample_path):
+    def _load_volume(self, sample_path, idx):
         """加载单个样本的所有模态数据"""
         volumes = []
         for modality in self.modalities:
@@ -74,13 +75,17 @@ class MultiModalMRIDataset(Dataset):
                 sample_path, f"{basename}_{modality}.nii.gz"))
             img = nib.funcs.as_closest_canonical(img)  # 标准化方向
             data = img.get_fdata(dtype=np.float32)
-            data = self._normalize(data)
+            data = self._normalize(data, idx)
             volumes.append(data)
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
-    def _normalize(self, volume):
-        vmin = np.percentile(volume, 0.1)
-        vmax = np.percentile(volume, 99.9)
+    def _normalize(self, volume, idx):
+        if self.min_max_cache.get(idx, None) is None:
+            vmin = np.percentile(volume, 0.1)
+            vmax = np.percentile(volume, 99.9)
+            self.min_max_cache[idx] = (vmin, vmax)
+        else:
+            vmin, vmax = self.min_max_cache[idx]
         volume = (volume - vmin) / (vmax - vmin) * \
             2 - 1 if vmax != 0 else volume
         volume = np.clip(volume, -1, 1)
@@ -95,7 +100,7 @@ class MultiModalMRIDataset(Dataset):
             self.cache.move_to_end(sample_idx)
             volume = self.cache[sample_idx]
         else:
-            volume = self._load_volume(sample_path)
+            volume = self._load_volume(sample_path, idx)
             if self.use_cache:
                 if len(self.cache) > self.cache_size:
                     self.cache.popitem(last=False)  # 移除最旧的缓存项
