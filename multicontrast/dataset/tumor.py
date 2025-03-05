@@ -79,8 +79,8 @@ class MultiModalMRIDataset(Dataset):
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
     def _normalize(self, volume):
-        vmin = np.percentile(volume, 1)
-        vmax = np.percentile(volume, 99)
+        vmin = np.percentile(volume, 0.1)
+        vmax = np.percentile(volume, 99.9)
         volume = (volume - vmin) / (vmax - vmin) * \
             2 - 1 if vmax != 0 else volume
         volume = np.clip(volume, -1, 1)

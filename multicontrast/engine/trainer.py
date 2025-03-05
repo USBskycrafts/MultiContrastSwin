@@ -193,14 +193,14 @@ class GANTrainer(BaseTrainer):
                 y, batch['generated_contrasts'], real_label)
             fake_loss = self.discriminator(
                 fake.detach(), batch['generated_contrasts'], fake_label)
-        d_loss = (real_loss + fake_loss) / 2
+        d_loss = real_loss + fake_loss
         scaler_loss = self.d_scaler.scale(d_loss)
         if not isinstance(scaler_loss, torch.Tensor):
             raise RuntimeError(
                 f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
             )
         scaler_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
         self.d_scaler.update()
         self.d_optim.zero_grad()
@@ -218,19 +218,22 @@ class GANTrainer(BaseTrainer):
                 batch['generated_contrasts'],
                 real_label
             )
-        g_loss = (10 * g_l1_loss + g_against_loss) / 2
+        g_loss = g_l1_loss + g_against_loss
         scaled_loss = self.g_scaler.scale(g_loss)
         if not isinstance(scaled_loss, torch.Tensor):
             raise RuntimeError(
                 f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
             )
         scaled_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
         self.g_optim.zero_grad()
 
-        return torch.tensor([g_loss.item(), d_loss.item()])
+        return torch.tensor([g_l1_loss.item(),
+                             g_against_loss.item(),
+                             real_loss.item(),
+                             fake_loss.item()])
 
     def _validate_step(self, batch):
         self.generator.eval()

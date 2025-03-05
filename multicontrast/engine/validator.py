@@ -76,7 +76,7 @@ class SupervisedValidator(BaseValidator):
                     sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{j}_pred_modal.png'
                     sample = os.path.join(self.output_dir, sample)
                     plt.imsave(sample, img.cpu(),
-                               vmin=img.min(), vmax=img.max(), cmap='gray')
+                               vmin=-1, vmax=1, cmap='gray')
             for i, (filename, images) in enumerate(zip(filenames, y)):
                 # i: batch index, filename: (sample_id, slice_id)
                 for j, img in enumerate(images):
@@ -90,6 +90,7 @@ class SupervisedValidator(BaseValidator):
 
     def load_environment(self, checkpoint):
         Checkpoint.load_objects(
-            {'model': self.model},
+            {'model' if checkpoint.get('model', None)
+             else 'generator': self.model},
             checkpoint=checkpoint
         )
