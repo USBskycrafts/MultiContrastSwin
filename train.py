@@ -7,8 +7,8 @@ from multicontrast.engine.model import MultiContrastGeneration, MultiContrastGAN
 
 
 def train(local_rank, checkpoint=None):
-    # model = MultiContrastGeneration()
-    model = MultiContrastGANGeneration()
+    model = MultiContrastGeneration()
+    # model = MultiContrastGANGeneration()
     model.train(checkpoint_path=checkpoint)
 
 

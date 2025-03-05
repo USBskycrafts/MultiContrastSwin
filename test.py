@@ -9,8 +9,8 @@ from multicontrast.engine.model import MultiContrastGeneration, MultiContrastGAN
 
 
 def train(local_rank, checkpoint_path):
-    # model = MultiContrastGeneration()
-    model = MultiContrastGANGeneration()
+    model = MultiContrastGeneration()
+    # model = MultiContrastGANGeneration()
     checkpoint = torch.load(checkpoint_path)
     model.predict(checkpoint)
 
