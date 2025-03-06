@@ -181,6 +181,8 @@ class GANTrainer(BaseTrainer):
         self.discriminator.train()
         x = batch['x'].to(distributed.device())
         y = batch['y'].to(distributed.device())
+        self.d_optim.zero_grad()
+
         fake = self.generator(x,
                               batch['selected_contrasts'],
                               batch['generated_contrasts'])
@@ -201,8 +203,8 @@ class GANTrainer(BaseTrainer):
         # torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
         self.d_scaler.update()
-        self.d_optim.zero_grad()
 
+        self.g_optim.zero_grad()
         self.generator.train()
         with autocast():
             g_loss = self.generator(
@@ -216,7 +218,7 @@ class GANTrainer(BaseTrainer):
                 batch['generated_contrasts'],
                 real_label
             )
-        g_loss = 10 * g_loss.mean() + g_against_loss
+        g_loss = g_loss.mean() + g_against_loss
         scaled_loss = self.g_scaler.scale(g_loss)
         if not isinstance(scaled_loss, torch.Tensor):
             raise RuntimeError(
@@ -226,8 +228,6 @@ class GANTrainer(BaseTrainer):
         # torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
-        self.g_optim.zero_grad()
-        self.d_optim.zero_grad()
 
         return torch.tensor([g_loss.item(),
                              g_against_loss.item(),
