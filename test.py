@@ -5,12 +5,11 @@ import torch
 
 from ignite.distributed.launcher import Parallel
 
-from multicontrast.engine.model import MultiContrastGeneration, MultiContrastGANGeneration
+from multicontrast.engine.model import MultiContrastGANGeneration
 
 
 def train(local_rank, checkpoint_path):
-    model = MultiContrastGeneration()
-    # model = MultiContrastGANGeneration()
+    model = MultiContrastGANGeneration()
     checkpoint = torch.load(checkpoint_path)
     model.predict(checkpoint)
 
