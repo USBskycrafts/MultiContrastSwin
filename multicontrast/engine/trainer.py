@@ -9,9 +9,7 @@ from ignite.metrics import RunningAverage
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
-from multicontrast.utils.metrics import StablePSNR as PSNR
-from multicontrast.utils.metrics import StableSSIM as SSIM
-from multicontrast.utils.metrics import range_transform
+from multicontrast.utils.metrics import PSNR, SSIM
 
 
 class BaseTrainer(metaclass=ABCMeta):

@@ -2,16 +2,14 @@ import os
 from abc import ABCMeta, abstractmethod
 
 import ignite.distributed as distributed
+import matplotlib.pyplot as plt
 import torch
 from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
 from torch.cuda.amp.autocast_mode import autocast
-import matplotlib.pyplot as plt
 
-from multicontrast.utils.metrics import StablePSNR as PSNR
-from multicontrast.utils.metrics import StableSSIM as SSIM
-from multicontrast.utils.metrics import range_transform
+from multicontrast.utils.metrics import PSNR, SSIM
 
 
 class BaseValidator(metaclass=ABCMeta):
