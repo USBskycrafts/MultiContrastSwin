@@ -28,15 +28,15 @@ class PSNR(Metric):
 
     def _check_shape_dtype(self, output: Sequence[torch.Tensor]) -> None:
         y_pred, y = output
-        if y_pred.dtype != y.dtype:
-            raise TypeError(
-                f"Expected y_pred and y to have the same data type. Got y_pred: {y_pred.dtype} and y: {y.dtype}."
-            )
+        # if y_pred.dtype != y.dtype:
+        #     raise TypeError(
+        #         f"Expected y_pred and y to have the same data type. Got y_pred: {y_pred.dtype} and y: {y.dtype}."
+        #     )
 
-        if y_pred.shape != y.shape:
-            raise ValueError(
-                f"Expected y_pred and y to have the same shape. Got y_pred: {y_pred.shape} and y: {y.shape}."
-            )
+        # if y_pred.shape != y.shape:
+        #     raise ValueError(
+        #         f"Expected y_pred and y to have the same shape. Got y_pred: {y_pred.shape} and y: {y.shape}."
+        #     )
 
     @reinit__is_reduced
     def reset(self) -> None:
@@ -50,14 +50,14 @@ class PSNR(Metric):
     def update(self, output: Sequence[torch.Tensor]) -> None:
         self._check_shape_dtype(output)
         y_pred, y = output[0].detach(), output[1].detach()
+        y_pred = y_pred.float()
+        y = y.float()
         dim = tuple(range(1, y.ndim))
         mse_error = torch.pow(
             y_pred.double() - y.view_as(y_pred).double(), 2).mean(dim=dim)
         psnr = torch.sum(10.0 * torch.log10(self.data_range**2 / (mse_error + 1e-4))).to(
             device=self._device
         )
-        if psnr > 50:
-            return
         _mean = self._mean
         self._num_examples += y.shape[0]
         self._mean += (psnr - _mean) / self._num_examples
@@ -163,7 +163,8 @@ class SSIM(Metric):
     @reinit__is_reduced
     def update(self, output: Sequence[torch.Tensor]) -> None:
         y_pred, y = output[0].detach(), output[1].detach()
-
+        y_pred = y_pred.float()
+        y = y.float()
         if y_pred.dtype != y.dtype:
             raise TypeError(
                 f"Expected y_pred and y to have the same data type. Got y_pred: {y_pred.dtype} and y: {y.dtype}."

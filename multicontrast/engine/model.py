@@ -6,12 +6,13 @@ from typing import Union
 
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
-import ignite.distributed as distributed
-
+from ignite.handlers import CosineAnnealingScheduler
+from ignite.engine import Events
 from multicontrast.dataset.tumor import MultiModalGenerationDataset
 from multicontrast.engine.trainer import GANTrainer, SupervisedTrainer
 from multicontrast.engine.validator import SupervisedValidator
-from multicontrast.nn.task import MultiModalityGeneration, MultiContrastDiscrimination
+from multicontrast.nn.task import (MultiContrastDiscrimination,
+                                   MultiModalityGeneration)
 from multicontrast.utils import DEFAULT_CFG_PATH, ROOT
 
 
@@ -176,15 +177,17 @@ class MultiContrastGANGeneration(Model):
         self.generator = MultiModalityGeneration(**model_config)
         self.generator = auto_model(
             self.generator, find_unused_parameters=True)
+        self.g_lr = config.getfloat('train', 'g_lr')
         self.g_optim = torch.optim.Adam(self.generator.parameters(),
-                                        lr=config.getfloat('train', 'g_lr'))
+                                        lr=self.g_lr)
         self.g_optim = auto_optim(self.g_optim)
         # ----------------------------------------------------------------------------
         self.discriminator = MultiContrastDiscrimination(**model_config)
         self.discriminator = auto_model(
             self.discriminator, find_unused_parameters=True)
+        self.d_lr = config.getfloat('train', 'd_lr')
         self.d_optim = torch.optim.Adam(self.discriminator.parameters(),
-                                        lr=config.getfloat('train', 'd_lr'))
+                                        self.d_lr)
         self.d_optim = auto_optim(self.d_optim)
 
         self.training_dataset = MultiModalGenerationDataset(
@@ -197,6 +200,12 @@ class MultiContrastGANGeneration(Model):
                                   self.discriminator,
                                   self.g_optim,
                                   self.d_optim)
+        g_scheduler = CosineAnnealingScheduler(self.g_optim, "lr", 
+                                                self.g_lr, 0.1 * self.g_lr, 1000)
+        d_scheduler = CosineAnnealingScheduler(self.d_optim, "lr", 
+                                               self.d_lr, 0.1 * self.d_lr, 1000)
+        self.trainer.register_events(Events.ITERATION_STARTED, g_scheduler)
+        self.trainer.register_events(Events.ITERATION_STARTED, d_scheduler)
 
         self.data_loader = auto_dataloader(
             self.training_dataset,

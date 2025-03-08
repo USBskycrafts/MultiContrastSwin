@@ -5,11 +5,10 @@ import torch
 from ignite.engine import Engine, Events
 from ignite.handlers import (Checkpoint, ProgressBar, TensorboardLogger,
                              TerminateOnNan, global_step_from_engine)
-from ignite.metrics import RunningAverage
+from ignite.metrics import RunningAverage, PSNR, SSIM
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
-from multicontrast.utils.metrics import PSNR, SSIM
 
 
 class BaseTrainer(metaclass=ABCMeta):
@@ -42,9 +41,11 @@ class BaseTrainer(metaclass=ABCMeta):
         validator = Engine(
             lambda engine, batch: self._validate_step(batch))
         psnr = PSNR(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+                    output_transform=lambda y: (y[0].squeeze(-1).float(), 
+                                                y[1].squeeze(-1).float()))
         ssim = SSIM(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+                    output_transform=lambda y: (y[0].squeeze(-1).float()
+                                                , y[1].squeeze(-1).float()))
         psnr.attach(validator, "psnr")
         ssim.attach(validator, "ssim")
         if self.log_dir is not None:
@@ -115,14 +116,11 @@ class SupervisedTrainer(BaseTrainer):
         y = batch['y'].to(distributed.device())
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
-        with autocast():
+        with autocast(dtype=torch.bfloat16):
             loss = self.model(x, selected_contrasts,
-                              generated_contrats, y).mean()
+                              generated_contrats, y)
         scaler_loss = self.scaler.scale(loss)
-        if isinstance(scaler_loss, torch.Tensor):
-            scaler_loss.backward()
-        else:
-            raise ValueError("Loss must be a tensor")
+        scaler_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.scaler.step(self.optimizer)
         self.scaler.update()
@@ -156,7 +154,7 @@ class SupervisedTrainer(BaseTrainer):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():
-            with autocast():
+            with autocast(dtype=torch.bfloat16):
                 pred = self.model(x, selected_contrasts, generated_contrats)
         return pred, y
 
@@ -188,17 +186,17 @@ class GANTrainer(BaseTrainer):
                               batch['generated_contrasts'])
         real_label = torch.tensor(1.0).to(distributed.device())
         fake_label = torch.tensor(0.0).to(distributed.device())
-        with autocast():
+        with autocast(dtype=torch.bfloat16):
             real_loss = self.discriminator(
                 y, batch['generated_contrasts'], real_label)
             fake_loss = self.discriminator(
                 fake.detach(), batch['generated_contrasts'], fake_label)
         d_loss = (real_loss + fake_loss) / 2
         scaler_loss = self.d_scaler.scale(d_loss)
-        if not isinstance(scaler_loss, torch.Tensor):
-            raise RuntimeError(
-                f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
-            )
+        # if not isinstance(scaler_loss, torch.Tensor):
+        #     raise RuntimeError(
+        #         f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
+        #     )
         scaler_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
@@ -206,8 +204,8 @@ class GANTrainer(BaseTrainer):
 
         self.g_optim.zero_grad()
         self.generator.train()
-        with autocast():
-            g_loss = self.generator(
+        with autocast(dtype=torch.bfloat16):
+            g_per_loss = self.generator(
                 x,
                 batch['selected_contrasts'],
                 batch['generated_contrasts'],
@@ -218,18 +216,18 @@ class GANTrainer(BaseTrainer):
                 batch['generated_contrasts'],
                 real_label
             )
-        g_loss = g_loss.mean() + g_against_loss
+        g_loss = 10 * g_per_loss + g_against_loss
         scaled_loss = self.g_scaler.scale(g_loss)
-        if not isinstance(scaled_loss, torch.Tensor):
-            raise RuntimeError(
-                f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
-            )
+        # if not isinstance(scaled_loss, torch.Tensor):
+        #     raise RuntimeError(
+        #         f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
+        #     )
         scaled_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
 
-        return torch.tensor([g_loss.item(),
+        return torch.tensor([g_per_loss.mean().item(),
                              g_against_loss.item(),
                              real_loss.item(),
                              fake_loss.item()])
@@ -239,7 +237,7 @@ class GANTrainer(BaseTrainer):
         x = batch['x'].to(distributed.device())
         y = batch['y'].to(distributed.device())
         with torch.no_grad():
-            with autocast():
+            with autocast(dtype=torch.bfloat16):
                 fake = self.generator(
                     x,
                     batch['selected_contrasts'],

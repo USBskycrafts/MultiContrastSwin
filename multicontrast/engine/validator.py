@@ -7,9 +7,8 @@ import torch
 from ignite.distributed import auto_dataloader, auto_model
 from ignite.engine import Engine, Events
 from ignite.handlers import Checkpoint
+from ignite.metrics import PSNR, SSIM
 from torch.cuda.amp.autocast_mode import autocast
-
-from multicontrast.utils.metrics import PSNR, SSIM
 
 
 class BaseValidator(metaclass=ABCMeta):
@@ -19,9 +18,11 @@ class BaseValidator(metaclass=ABCMeta):
 
     def validate(self, data_loader):
         psnr = PSNR(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+                    output_transform=lambda y: (y[0].squeeze(-1).float(),
+                                                y[1].squeeze(-1).float()))
         ssim = SSIM(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1), y[1].squeeze(-1)))
+                    output_transform=lambda y: (y[0].squeeze(-1).float(), 
+                                                y[1].squeeze(-1).float()))
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
         self.register_events(Events.COMPLETED, lambda *_: print(
@@ -56,7 +57,7 @@ class SupervisedValidator(BaseValidator):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():
-            with autocast():
+            with autocast(dtype=torch.bfloat16):
                 pred = self.model(x,
                                   selected_contrasts,
                                   generated_contrats,
