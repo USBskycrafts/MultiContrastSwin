@@ -226,13 +226,15 @@ class ImageEncoding(nn.Module):
 
         self.inc = nn.Sequential(
             nn.ReflectionPad2d(3),
-            nn.Conv2d(in_channels, out_channels, 7, bias=False),
+            nn.Conv2d(in_channels, out_channels, 7),
+            nn.GroupNorm(16, out_channels),
             nn.LeakyReLU(inplace=True),
         )
 
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
-            nn.Conv2d(out_channels, out_channels, 5, bias=False),
+            nn.Conv2d(out_channels, out_channels, 5),
+            nn.GroupNorm(16, out_channels),
             nn.LeakyReLU(inplace=True),
             nn.ReflectionPad2d(2),
             nn.Conv2d(out_channels, out_channels, 5),
@@ -251,7 +253,8 @@ class ImageDecoding(nn.Module):
 
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
-            nn.Conv2d(in_channels, in_channels, 5, bias=False),
+            nn.Conv2d(in_channels, in_channels, 5),
+            nn.GroupNorm(16, in_channels),
             nn.LeakyReLU(inplace=True),
             nn.ReflectionPad2d(2),
             nn.Conv2d(in_channels, in_channels, 5),
@@ -270,12 +273,12 @@ class ImageDecoding(nn.Module):
 
 
 class MultiContrastImageEncoding(nn.Module):
-    def __init__(self, in_channels, out_channels, num_contrats):
+    def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
 
         self.encodings = nn.ModuleList(
             [ImageEncoding(in_channels, out_channels)
-             for _ in range(num_contrats)]
+             for _ in range(num_contrasts)]
         )
 
     def forward(self, x, selected_contrats):
@@ -283,12 +286,12 @@ class MultiContrastImageEncoding(nn.Module):
 
 
 class MultiContrastImageDecoding(nn.Module):
-    def __init__(self, in_channels, out_channels, num_contrats):
+    def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
 
         self.decodings = nn.ModuleList(
             [ImageDecoding(in_channels, out_channels)
-             for _ in range(num_contrats)]
+             for _ in range(num_contrasts)]
         )
 
     def forward(self, x, selected_contrats: List[int]):

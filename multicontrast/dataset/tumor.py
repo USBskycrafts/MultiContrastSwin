@@ -75,19 +75,21 @@ class MultiModalMRIDataset(Dataset):
                 sample_path, f"{basename}_{modality}.nii.gz"))
             img = nib.funcs.as_closest_canonical(img)  # 标准化方向
             data = img.get_fdata(dtype=np.float32)
-            data = self._normalize(data, idx)
+            data = self._normalize(data, idx, modality)
             volumes.append(data)
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
-    def _normalize(self, volume, idx):
+    def _normalize(self, volume, idx, modality):
         if self.min_max_cache.get(idx, None) is None:
-            vmin = np.percentile(volume, 0.1)
-            vmax = np.percentile(volume, 99.9)
-            self.min_max_cache[idx] = (vmin, vmax)
+            self.min_max_cache[idx] = {}
+        if modality not in self.min_max_cache[idx]:
+            vmin = np.min(volume)
+            vmax = np.max(volume)
+            self.min_max_cache[idx][modality] = (vmin, vmax)
         else:
-            vmin, vmax = self.min_max_cache[idx]
+            vmin, vmax = self.min_max_cache[idx][modality]
         volume = (volume - vmin) / (vmax - vmin) * \
-            2 - 1 if vmax != 0 else volume
+            2 - 1 if vmax != 0 else -1
         volume = np.clip(volume, -1, 1)
         return volume
 

@@ -21,7 +21,7 @@ class BaseValidator(metaclass=ABCMeta):
                     output_transform=lambda y: (y[0].squeeze(-1).float(),
                                                 y[1].squeeze(-1).float()))
         ssim = SSIM(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1).float(), 
+                    output_transform=lambda y: (y[0].squeeze(-1).float(),
                                                 y[1].squeeze(-1).float()))
         psnr.attach(self.engine, name="psnr")
         ssim.attach(self.engine, name="ssim")
@@ -74,7 +74,7 @@ class SupervisedValidator(BaseValidator):
                     # j: modal index
                     sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{j}_pred_modal.png'
                     sample = os.path.join(self.output_dir, sample)
-                    plt.imsave(sample, img.cpu(),
+                    plt.imsave(sample, img.cpu().float(),
                                vmin=-1, vmax=1, cmap='gray')
             for i, (filename, images) in enumerate(zip(filenames, y)):
                 # i: batch index, filename: (sample_id, slice_id)

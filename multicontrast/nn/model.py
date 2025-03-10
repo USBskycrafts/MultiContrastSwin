@@ -3,25 +3,25 @@ from .module import *
 
 class MultiContrastSwinTransformer(nn.Module):
 
-    def __init__(self, dim, num_layers, window_size, shift_size, num_contrats, num_heads, patch_size=2):
+    def __init__(self, dim, num_layers, window_size, shift_size, num_contrasts, num_heads, patch_size=2):
         super(MultiContrastSwinTransformer, self).__init__()
         self.dim = dim
         self.num_layers = num_layers
         self.window_size = window_size
         self.shift_size = shift_size
-        self.num_contrats = num_contrats
+        self.num_contrasts = num_contrasts
         self.num_heads = num_heads
         self.patch_size = patch_size
 
         self.image_encoding = MultiContrastImageEncoding(
-            in_channels=1, out_channels=dim, num_contrats=num_contrats)
+            in_channels=1, out_channels=dim, num_contrasts=num_contrasts)
         self.image_decoding = MultiContrastImageDecoding(
-            in_channels=dim, out_channels=1, num_contrats=num_contrats)
+            in_channels=dim, out_channels=1, num_contrasts=num_contrasts)
 
         self.encoder = Encoder(dim, num_layers, window_size,
-                               shift_size, num_contrats, num_heads, patch_size)
+                               shift_size, num_contrasts, num_heads, patch_size)
         self.decoder = Decoder(dim, num_layers, window_size,
-                               shift_size, num_contrats, num_heads, patch_size)
+                               shift_size, num_contrasts, num_heads, patch_size)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -51,18 +51,18 @@ class MultiContrastDiscriminator(nn.Module):
                  num_layers,
                  window_size,
                  shift_size,
-                 num_contrats,
+                 num_contrasts,
                  num_heads,
                  patch_size=2):
         super(MultiContrastDiscriminator, self).__init__()
         self.image_encoding = MultiContrastImageEncoding(
-            in_channels=1, out_channels=dim, num_contrats=num_contrats)
+            in_channels=1, out_channels=dim, num_contrasts=num_contrasts)
         self.patches = EncoderDownLayer(
-            dim, window_size, shift_size, num_contrats, num_heads, patch_size * 2, False)
+            dim, window_size, shift_size, num_contrasts, num_heads, patch_size * 2, False)
         num_layers -= 1
         self.down_layers = nn.ModuleList([
             EncoderDownLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                             num_contrats, num_heads, patch_size)
+                             num_contrasts, num_heads, patch_size)
             for i in range(num_layers)
         ])
 

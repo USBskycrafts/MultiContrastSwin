@@ -24,14 +24,17 @@ class TestMultiModalGenerationDataset(unittest.TestCase):
         dataloader = DataLoader(dataset, batch_size=32, shuffle=True,
                                 collate_fn=dataset.collate_fn, num_workers=0)
         for batch in dataloader:
-            sample = batch['x'][0, 0, :, :, 0]
-            plt.imshow(sample, cmap='gray', vmin=0, vmax=1)
+            for i in range(batch['x'].shape[1]):
+                sample = batch['x'][0, i, :, :, 0]
+                plt.figure()
+                plt.imshow(sample, cmap='gray', vmin=-1, vmax=1)
+                plt.title(
+                    f'Batch index: {batch["idx"][i]}, {batch["selected_contrasts"][i]}')
             plt.show()
-
     # @unittest.skip('Skip because time cost is too high')
     # def test_dataset_with_model(self):
     #     model = MultiModalityGeneration(dim=64, num_layers=4, window_size=(
-    #         6, 5), shift_size=(3, 2), num_contrats=len(args.modalities), num_heads=4)
+    #         6, 5), shift_size=(3, 2), num_contrasts=len(args.modalities), num_heads=4)
     #     dataset = MultiModalGenerationDataset(
     #         args.root_dir, args.modalities)
     #     dataloader = DataLoader(dataset, batch_size=32, shuffle=True,

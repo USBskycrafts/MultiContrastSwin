@@ -54,14 +54,14 @@ class MultiContrastGeneration(Model):
         super().__init__(*args, **kwargs)
         # init the model, dataset, etc
         # attr:
-        # dim, num_layers, window_size, shift_size, num_contrats, num_heads
+        # dim, num_layers, window_size, shift_size, num_contrasts, num_heads
         config = self.config
         model_config = {
             "dim": config.getint('model', 'dim'),
             "num_layers": config.getint('model', 'num_layers'),
             "window_size": literal_eval(config.get('model', 'window_size')),
             "shift_size": literal_eval(config.get('model', 'shift_size')),
-            "num_contrats": config.getint('model', 'num_contrats'),
+            "num_contrasts": config.getint('model', 'num_contrasts'),
             "num_heads": config.getint('model', 'num_heads')
         }
         self.model = MultiModalityGeneration(**model_config)
@@ -164,14 +164,14 @@ class MultiContrastGANGeneration(Model):
         super().__init__(*args, **kwargs)
         # init the model, dataset, etc
         # attr:
-        # dim, num_layers, window_size, shift_size, num_contrats, num_heads
+        # dim, num_layers, window_size, shift_size, num_contrasts, num_heads
         config = self.config
         model_config = {
             "dim": config.getint('model', 'dim'),
             "num_layers": config.getint('model', 'num_layers'),
             "window_size": literal_eval(config.get('model', 'window_size')),
             "shift_size": literal_eval(config.get('model', 'shift_size')),
-            "num_contrats": config.getint('model', 'num_contrats'),
+            "num_contrasts": config.getint('model', 'num_contrasts'),
             "num_heads": config.getint('model', 'num_heads')
         }
         self.generator = MultiModalityGeneration(**model_config)
@@ -200,9 +200,9 @@ class MultiContrastGANGeneration(Model):
                                   self.discriminator,
                                   self.g_optim,
                                   self.d_optim)
-        g_scheduler = CosineAnnealingScheduler(self.g_optim, "lr", 
-                                                self.g_lr, 0.1 * self.g_lr, 1000)
-        d_scheduler = CosineAnnealingScheduler(self.d_optim, "lr", 
+        g_scheduler = CosineAnnealingScheduler(self.g_optim, "lr",
+                                               self.g_lr, 0.1 * self.g_lr, 1000)
+        d_scheduler = CosineAnnealingScheduler(self.d_optim, "lr",
                                                self.d_lr, 0.1 * self.d_lr, 1000)
         self.trainer.register_events(Events.ITERATION_STARTED, g_scheduler)
         self.trainer.register_events(Events.ITERATION_STARTED, d_scheduler)

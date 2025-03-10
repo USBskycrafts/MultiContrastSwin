@@ -2,7 +2,7 @@ from .block import *
 
 
 class EncoderDownLayer(nn.Module):
-    def __init__(self, dim, window_size, shift_size, num_contrats, num_heads, patch_size=2, reduction=True):
+    def __init__(self, dim, window_size, shift_size, num_contrasts, num_heads, patch_size=2, reduction=True):
         super(EncoderDownLayer, self).__init__()
         self.patches = PatchPartition(dim, patch_size, reduction)
         if reduction:
@@ -12,10 +12,10 @@ class EncoderDownLayer(nn.Module):
         self.layer = nn.Sequential(
             MultiContrastEncoderBlock(dim,
                                       window_size, (0, 0),
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
             MultiContrastEncoderBlock(dim,
                                       window_size, shift_size,
-                                      num_contrats, num_heads)
+                                      num_contrasts, num_heads)
         )
 
     def forward(self, x, selected_contrats):
@@ -26,16 +26,16 @@ class EncoderDownLayer(nn.Module):
 
 
 class EncoderUpLayer(nn.Module):
-    def __init__(self, dim, window_size, shift_size, num_contrats, num_heads, patch_size=2, reduction=True):
+    def __init__(self, dim, window_size, shift_size, num_contrasts, num_heads, patch_size=2, reduction=True):
         super(EncoderUpLayer, self).__init__()
         self.expands = PatchExpansion(dim, patch_size, reduction)
         self.layer = nn.Sequential(
             MultiContrastEncoderBlock(dim // patch_size,
                                       window_size, (0, 0),
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
             MultiContrastEncoderBlock(dim // patch_size,
                                       window_size, shift_size,
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
         )
 
         self.compress = nn.Linear(2 * dim // (patch_size), dim // patch_size)
@@ -50,30 +50,30 @@ class EncoderUpLayer(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, dim, num_layers, window_size, shift_size, num_contrats, num_heads, patch_size=2):
+    def __init__(self, dim, num_layers, window_size, shift_size, num_contrasts, num_heads, patch_size=2):
         super(Encoder, self).__init__()
         # self.patches = PatchPartition(dim, patch_size * 2, False)
         self.patches = EncoderDownLayer(
-            dim, window_size, shift_size, num_contrats, num_heads, patch_size * 2, False)
+            dim, window_size, shift_size, num_contrasts, num_heads, patch_size * 2, False)
         num_layers -= 1
         self.down_layers = nn.ModuleList([
             EncoderDownLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                             num_contrats, num_heads, patch_size)
+                             num_contrasts, num_heads, patch_size)
             for i in range(num_layers)
         ])
 
         self.bottleneck = nn.Sequential(
             MultiContrastEncoderBlock(dim * (1 << num_layers) * patch_size ** 4,
                                       window_size, (0, 0),
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
             MultiContrastEncoderBlock(dim * (1 << num_layers) * patch_size ** 4,
                                       window_size, shift_size,
-                                      num_contrats, num_heads)
+                                      num_contrasts, num_heads)
         )
 
         self.up_layers = nn.ModuleList([
             EncoderUpLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                           num_contrats, num_heads, patch_size)
+                           num_contrasts, num_heads, patch_size)
             for i in range(num_layers, 0, -1)
         ])
 
@@ -98,15 +98,15 @@ class Encoder(nn.Module):
 
 
 class DecoderUpLayer(nn.Module):
-    def __init__(self, dim, window_size, shift_size, num_contrats, num_heads, patch_size=2, reduction=True):
+    def __init__(self, dim, window_size, shift_size, num_contrasts, num_heads, patch_size=2, reduction=True):
         super(DecoderUpLayer, self).__init__()
         self.layer = nn.Sequential(
             MultiContrastDecoderBlock(dim,
                                       window_size, (0, 0),
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
             MultiContrastDecoderBlock(dim,
                                       window_size, shift_size,
-                                      num_contrats, num_heads),
+                                      num_contrasts, num_heads),
         )
 
         self.expands = PatchExpansion(dim, patch_size, reduction)
@@ -120,17 +120,17 @@ class DecoderUpLayer(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, dim, num_layers, window_size, shift_size, num_contrats, num_heads, patch_size=2):
+    def __init__(self, dim, num_layers, window_size, shift_size, num_contrasts, num_heads, patch_size=2):
         super(Decoder, self).__init__()
         num_layers -= 1
         self.up_layers = nn.ModuleList([
             DecoderUpLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                           num_contrats, num_heads, patch_size)
+                           num_contrasts, num_heads, patch_size)
             for i in range(num_layers, 0, -1)
         ])
 
         self.expands = DecoderUpLayer(dim * patch_size ** 4, window_size, (0, 0),
-                                      num_contrats, num_heads, patch_size * 2, reduction=False)
+                                      num_contrasts, num_heads, patch_size * 2, reduction=False)
 
     def forward(self, x, encoded_features, selected_contrats):
         for i, layer in enumerate(self.up_layers):
