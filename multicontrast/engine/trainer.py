@@ -10,7 +10,6 @@ from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 
 
-
 class BaseTrainer(metaclass=ABCMeta):
     def __init__(self):
         self.engine = Engine(lambda engine, batch: self._train_step(batch))
@@ -41,11 +40,10 @@ class BaseTrainer(metaclass=ABCMeta):
         validator = Engine(
             lambda engine, batch: self._validate_step(batch))
         psnr = PSNR(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1).float(), 
+                    output_transform=lambda y: (y[0].squeeze(-1).float(),
                                                 y[1].squeeze(-1).float()))
         ssim = SSIM(data_range=2, device=distributed.device(),
-                    output_transform=lambda y: (y[0].squeeze(-1).float()
-                                                , y[1].squeeze(-1).float()))
+                    output_transform=lambda y: (y[0].squeeze(-1).float(), y[1].squeeze(-1).float()))
         psnr.attach(validator, "psnr")
         ssim.attach(validator, "ssim")
         if self.log_dir is not None:
@@ -198,7 +196,7 @@ class GANTrainer(BaseTrainer):
         #         f"Expected scaler_loss to be a tensor, but got {type(scaler_loss)}"
         #     )
         scaler_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1.0)
         self.d_scaler.step(self.d_optim)
         self.d_scaler.update()
 
@@ -223,7 +221,7 @@ class GANTrainer(BaseTrainer):
         #         f"Expected scaled_loss to be a tensor, but got {type(scaled_loss)}"
         #     )
         scaled_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
+        # torch.nn.utils.clip_grad_norm_(self.generator.parameters(), 1.0)
         self.g_scaler.step(self.g_optim)
         self.g_scaler.update()
 

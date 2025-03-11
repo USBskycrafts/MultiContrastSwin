@@ -22,6 +22,7 @@ class Model(metaclass=ABCMeta):
         dataset_cfg_path = ROOT / 'config/dataset.ini'
         self.config = configparser.ConfigParser()
         self.config.read([config, dataset_cfg_path])
+        torch.set_float32_matmul_precision('high')
 
     def train(self, checkpoint_path: Union[str, None] = None):
         if checkpoint_path is None:
