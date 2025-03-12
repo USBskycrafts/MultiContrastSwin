@@ -67,8 +67,9 @@ class MultiContrastGeneration(Model):
         }
         self.model = MultiModalityGeneration(**model_config)
         self.model = auto_model(self.model, find_unused_parameters=True)
+        self.learning_rate = config.getfloat('train', 'learning_rate')
         self.optimizer = torch.optim.Adam(self.model.parameters(),
-                                          lr=config.getfloat('train', 'learning_rate'))
+                                          lr=self.learning_rate)
         self.optimizer = auto_optim(self.optimizer)
         self.training_dataset = MultiModalGenerationDataset(
             root_dir=config.get('train', 'root_dir'),
@@ -78,6 +79,9 @@ class MultiContrastGeneration(Model):
     def _train(self, checkpoint_path=None):
         self.trainer = SupervisedTrainer(self.model,
                                          self.optimizer)
+
+        scheduler = CosineAnnealingScheduler(self.optimizer, "lr",
+                                             self.learning_rate, 0.1 * self.learning_rate, 1000)
         self.data_loader = auto_dataloader(
             self.training_dataset,
             batch_size=self.config.getint('train', 'batch_size'),

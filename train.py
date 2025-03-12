@@ -3,11 +3,11 @@ import os
 
 from ignite.distributed.launcher import Parallel
 
-from multicontrast.engine.model import MultiContrastGANGeneration
+from multicontrast.engine.model import MultiContrastGeneration
 
 
 def train(local_rank, checkpoint=None):
-    model = MultiContrastGANGeneration()
+    model = MultiContrastGeneration()
     model.train(checkpoint_path=checkpoint)
 
 
