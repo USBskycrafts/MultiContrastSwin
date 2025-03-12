@@ -7,7 +7,7 @@ class CustomLPIPS(nn.Module):
     def __init__(self, pretrained=True):
         super().__init__()
         # 加载预训练的LPIPS（VGG）模型并冻结其所有参数
-        self.lpips = LPIPS(net='vgg', pretrained=pretrained)
+        self.lpips = LPIPS(pretrained=pretrained)
         for param in self.lpips.parameters():  # 冻结VGG参数
             param.requires_grad = False
 
