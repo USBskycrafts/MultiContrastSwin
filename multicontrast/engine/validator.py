@@ -74,7 +74,8 @@ class SupervisedValidator(BaseValidator):
                     # j: modal index
                     sample = f'{filename[0]}_{filename[1]}_{selected_contrasts}->{j}_pred_modal.png'
                     sample = os.path.join(self.output_dir, sample)
-                    plt.imsave(sample, img.cpu().float(),
+                    img = img.squeeze().cpu().float()
+                    plt.imsave(sample, img,
                                vmin=-1, vmax=1, cmap='gray')
             for i, (filename, images) in enumerate(zip(filenames, y)):
                 # i: batch index, filename: (sample_id, slice_id)
@@ -82,7 +83,8 @@ class SupervisedValidator(BaseValidator):
                     # j: modal index
                     sample = f'{filename[0]}_{filename[1]}_{j}_gt_modal.png'
                     sample = os.path.join(self.output_dir, sample)
-                    plt.imsave(sample, img.cpu(),
+                    img = img.squeeze().cpu().float()
+                    plt.imsave(sample, img,
                                vmin=-1, vmax=1, cmap='gray')
 
         return pred, y
