@@ -52,13 +52,12 @@ class WindowAttention(nn.Module):
         q, k, v = map(lambda x: window_partition(
             x, self.window_size), (q, k, v))
 
-        q = self.q_proj(q)
-        k = self.k_proj(k)
-        v = self.v_proj(v)
-
         q = q + select_embeddings(self.embeddings[0], selected_contrasts[0])
         k = k + select_embeddings(self.embeddings[1] if self.num_resources > 1 else self.embeddings[0],
                                   selected_contrasts[1])
+        q = self.q_proj(q)
+        k = self.k_proj(k)
+        v = self.v_proj(v)
 
         relative_bias_index = select_relative_coords(
             self.relative_bias_index,
@@ -186,8 +185,15 @@ class PatchPartition(nn.Module):
         self.reduction = reduction
 
         if reduction:
-            self.proj = nn.Linear(
-                dim * (patch_size ** 2), dim * patch_size)
+            self.proj = nn.Sequential(
+                nn.LayerNorm(dim * (patch_size ** 2)),
+                nn.Linear(dim * (patch_size ** 2), dim * patch_size),
+            )
+        else:
+            self.proj = nn.Sequential(
+                nn.LayerNorm(dim * (patch_size ** 2)),
+                nn.Linear(dim * (patch_size ** 2), dim * (patch_size ** 2)),
+            )
 
     def forward(self, x):
         B, M, H, W, C = x.shape
@@ -195,8 +201,7 @@ class PatchPartition(nn.Module):
                       W // self.patch_size, self.patch_size, C)
         x = x.permute(0, 1, 2, 4, 3, 5, 6).contiguous()
         x = x.view(B, M, H // self.patch_size, W // self.patch_size, -1)
-        if self.reduction:
-            x = self.proj(x)
+        x = self.proj(x)
         return x
 
 
@@ -208,15 +213,22 @@ class PatchExpansion(nn.Module):
         self.reduction = reduction
 
         if reduction:
-            self.proj = nn.Linear(dim // (patch_size ** 2), dim // patch_size)
+            self.proj = nn.Sequential(
+                nn.LayerNorm(dim // (patch_size ** 2)),
+                nn.Linear(dim // (patch_size ** 2), dim // patch_size),
+            )
+        else:
+            self.proj = nn.Sequential(
+                nn.LayerNorm(dim // (patch_size ** 2)),
+                nn.Linear(dim // (patch_size ** 2), dim // (patch_size ** 2)),
+            )
 
     def forward(self, x):
         B, M, H, W, C = x.shape
         x = x.view(B, M, H, W, self.patch_size, self.patch_size, -1)
         x = x.permute(0, 1, 2, 4, 3, 5, 6).contiguous()
         x = x.view(B, M, H * self.patch_size, W * self.patch_size, -1)
-        if self.reduction:
-            x = self.proj(x)
+        x = self.proj(x)
         return x
 
 
@@ -227,14 +239,12 @@ class ImageEncoding(nn.Module):
         self.inc = nn.Sequential(
             nn.ReflectionPad2d(3),
             nn.Conv2d(in_channels, out_channels, 7),
-            nn.GroupNorm(4, out_channels),
             nn.PReLU(out_channels)
         )
 
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
             nn.Conv2d(out_channels, out_channels, 5),
-            nn.GroupNorm(4, out_channels),
             nn.PReLU(out_channels),
             nn.ReflectionPad2d(2),
             nn.Conv2d(out_channels, out_channels, 5),
@@ -254,7 +264,6 @@ class ImageDecoding(nn.Module):
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
             nn.Conv2d(in_channels, in_channels, 5),
-            nn.GroupNorm(4, in_channels),
             nn.PReLU(in_channels),
             nn.ReflectionPad2d(2),
             nn.Conv2d(in_channels, in_channels, 5),

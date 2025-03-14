@@ -58,22 +58,22 @@ class Encoder(nn.Module):
         num_layers -= 1
         self.down_layers = nn.ModuleList([
             EncoderDownLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                             num_contrasts, num_heads, patch_size)
+                             num_contrasts, num_heads * (1 << (i + 1)), patch_size)
             for i in range(num_layers)
         ])
 
         self.bottleneck = nn.Sequential(
             MultiContrastEncoderBlock(dim * (1 << num_layers) * patch_size ** 4,
                                       window_size, (0, 0),
-                                      num_contrasts, num_heads),
+                                      num_contrasts, num_heads * (1 << num_layers)),
             MultiContrastEncoderBlock(dim * (1 << num_layers) * patch_size ** 4,
                                       window_size, shift_size,
-                                      num_contrasts, num_heads)
+                                      num_contrasts, num_heads * (1 << num_layers)),
         )
 
         self.up_layers = nn.ModuleList([
             EncoderUpLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                           num_contrasts, num_heads, patch_size)
+                           num_contrasts, num_heads * (1 << (i + 1)), patch_size)
             for i in range(num_layers, 0, -1)
         ])
 
@@ -125,7 +125,7 @@ class Decoder(nn.Module):
         num_layers -= 1
         self.up_layers = nn.ModuleList([
             DecoderUpLayer(dim * (1 << i) * patch_size ** 4, window_size, shift_size,
-                           num_contrasts, num_heads, patch_size)
+                           num_contrasts, num_heads * (1 << (i + 1)), patch_size)
             for i in range(num_layers, 0, -1)
         ])
 

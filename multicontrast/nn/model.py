@@ -23,6 +23,11 @@ class MultiContrastSwinTransformer(nn.Module):
         self.decoder = Decoder(dim, num_layers, window_size,
                                shift_size, num_contrasts, num_heads, patch_size)
 
+        self.contrasts_seed = nn.Parameter(
+            torch.randn(1, num_contrasts, 1, 1, dim *
+                        (1 << (num_layers - 1)) * patch_size ** 4)
+        )
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
@@ -34,15 +39,12 @@ class MultiContrastSwinTransformer(nn.Module):
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
 
-        generation = []
-        for i in range(sample_times):
-            noise = torch.rand(
-                B, len(selected_contrats[1]), H, W, C).to(x.device)
-            decoded_features = self.decoder(
-                noise, encoded_features, selected_contrats)
-            y = self.image_decoding(decoded_features, selected_contrats[1])
-            generation.append(y)
-        return torch.mean(torch.stack(generation), dim=0)
+        seeds = self.contrasts_seed[:, selected_contrats[1], :]
+        seeds = seeds.repeat(B, 1, H, W, 1)
+        decoded_features = self.decoder(
+            seeds, encoded_features, selected_contrats)
+        y = self.image_decoding(decoded_features, selected_contrats[1])
+        return y
 
 
 class MultiContrastDiscriminator(nn.Module):
