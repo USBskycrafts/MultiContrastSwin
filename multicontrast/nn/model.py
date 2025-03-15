@@ -33,6 +33,11 @@ class MultiContrastSwinTransformer(nn.Module):
                 torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
             elif isinstance(m, nn.Linear):
                 torch.nn.init.trunc_normal_(m.weight.data, std=0.02)
+                if m.bias is not None:
+                    torch.nn.init.constant_(m.bias.data, 0.0)
+            elif isinstance(m, nn.LayerNorm):
+                torch.nn.init.constant_(m.weight.data, 1.0)
+                torch.nn.init.constant_(m.bias.data, 0.0)
 
     def forward(self, x, selected_contrats, sample_times=1):
         x = self.image_encoding(x, selected_contrats[0])
