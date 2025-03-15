@@ -239,13 +239,15 @@ class ImageEncoding(nn.Module):
         self.inc = nn.Sequential(
             nn.ReflectionPad2d(3),
             nn.Conv2d(in_channels, out_channels, 7),
-            nn.PReLU(out_channels)
+            # nn.PReLU(out_channels)
+            nn.LeakyReLU(inplace=True)
         )
 
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
             nn.Conv2d(out_channels, out_channels, 5),
-            nn.PReLU(out_channels),
+            # nn.PReLU(out_channels),
+            nn.LeakyReLU(inplace=True),
             nn.ReflectionPad2d(2),
             nn.Conv2d(out_channels, out_channels, 5),
         )
@@ -264,7 +266,8 @@ class ImageDecoding(nn.Module):
         self.convs = nn.Sequential(
             nn.ReflectionPad2d(2),
             nn.Conv2d(in_channels, in_channels, 5),
-            nn.PReLU(in_channels),
+            # nn.PReLU(in_channels),
+            nn.LeakyReLU(inplace=True),
             nn.ReflectionPad2d(2),
             nn.Conv2d(in_channels, in_channels, 5),
         )
