@@ -32,7 +32,7 @@ class MultiModalityGeneration(BaseModel):
         super().__init__()
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.perceptual_loss = CustomLPIPS()
-        self.mse_fn = nn.MSELoss()
+        self.l1_loss = nn.L1Loss()
 
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(
@@ -40,7 +40,7 @@ class MultiModalityGeneration(BaseModel):
         # recon = self.model(
         #     x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
         # * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
-        return self.mse_fn(pred, y) * 0.1 + self.perceptual_loss(pred, y).mean()
+        return self.l1_loss(pred, y) * 0.8 + self.perceptual_loss(pred, y).mean() * 0.3
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
