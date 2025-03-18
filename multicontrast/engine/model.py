@@ -6,7 +6,7 @@ from typing import Union
 
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
-from ignite.handlers import CosineAnnealingScheduler
+from ignite.handlers import CosineAnnealingScheduler,  create_lr_scheduler_with_warmup
 from ignite.engine import Events
 from multicontrast.dataset.tumor import MultiModalGenerationDataset
 from multicontrast.engine.trainer import GANTrainer, SupervisedTrainer
@@ -82,6 +82,12 @@ class MultiContrastGeneration(Model):
 
         scheduler = CosineAnnealingScheduler(self.optimizer, "lr",
                                              self.learning_rate, 0.1 * self.learning_rate, 1000)
+        scheduler = create_lr_scheduler_with_warmup(
+            scheduler,
+            warmup_start_value=0.0,
+            warmup_duration=200,
+            warmup_end_value=self.learning_rate,
+        )
         self.trainer.register_events(Events.ITERATION_STARTED, scheduler)
         self.data_loader = auto_dataloader(
             self.training_dataset,
