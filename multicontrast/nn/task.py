@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from multicontrast.nn.model import MultiContrastSwinTransformer, MultiContrastDiscriminator
-from multicontrast.nn.loss import CustomLPIPS
+from multicontrast.nn.loss import CustomLPIPS, L1Loss
 
 
 class BaseModel(nn.Module):
@@ -32,7 +32,7 @@ class MultiModalityGeneration(BaseModel):
         super().__init__()
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.perceptual_loss = CustomLPIPS()
-        self.l1_loss = nn.L1Loss()
+        self.l1_loss = L1Loss()
 
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(

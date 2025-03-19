@@ -45,7 +45,7 @@ class MultiContrastSwinTransformer(nn.Module):
         B, M, H, W, C = encoded_features[0].shape
 
         seeds = self.contrasts_seed[:, selected_contrats[1], :]
-        seeds = seeds.repeat(B, 1, H, W, 1)
+        seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
         decoded_features = self.decoder(
             seeds, encoded_features, selected_contrats)
         y = self.image_decoding(decoded_features, selected_contrats[1])
