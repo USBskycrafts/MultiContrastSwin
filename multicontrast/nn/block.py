@@ -84,6 +84,84 @@ class WindowAttention(nn.Module):
         return x
 
 
+class MLP(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, output_size),
+            nn.Dropout(0.1)
+        )
+
+    def forward(self, x):
+        return self.mlp(x)
+
+
+class MoELayer(nn.Module):
+    def __init__(self, input_size, output_size, num_experts, use_aux_loss=False):
+        super().__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+        self.num_experts = num_experts
+        # self.k = k
+        self.use_aux_loss = use_aux_loss
+
+        self.experts = nn.ModuleList(
+            [MLP(input_size, 2 * input_size, output_size) for _ in range(num_experts)])
+        self.gate = nn.Linear(input_size, num_experts)
+
+        if not use_aux_loss:
+            self.expert_biases = nn.Parameter(torch.zeros(num_experts))
+
+    def _update_expert_biases(self, update_rate=1e-5):
+        expert_counts = torch.bincount(self.top_k_indices.flatten(),
+                                       minlength=self.num_experts)
+        avg_count = expert_counts.float().mean()
+        for i, count in enumerate(expert_counts):
+            # b_i = b_i + u + sign(e_i)
+            # note: this is \bar{c_i} - c_i, NOT c_i - \bar{c_i}, which will push the network to
+            # be maximally unbalanced. Really important to get this part right!!!
+            error = avg_count - count.float()
+            self.expert_biases.data[i] += update_rate * torch.sign(
+                error)
+
+    def forward(self, x):
+        # s_{i,t}
+        B, M, H, W, C = x.shape
+        gate_output = self.gate(x)
+        # use sigmoid gate instead of softmax
+        gate_probs = torch.sigmoid(gate_output)
+
+        # do top k based on s_{i,t} + b_i
+        if not self.use_aux_loss:
+            gate_logits = gate_output + self.expert_biases
+        else:
+            gate_logits = gate_output
+
+        _, top_k_indices = torch.topk(gate_logits, M, dim=-1)
+
+        # ...but make sure we use the unbiased s_{i,t} as the gate value
+        top_k_probs = gate_probs.gather(-1, top_k_indices)
+
+        # normalize to sum to 1
+        top_k_probs = top_k_probs / top_k_probs.sum(dim=-1, keepdim=True)
+
+        # get the routed expert outputs
+        expert_outputs = torch.stack(
+            [expert(x) for expert in self.experts])
+        indices = top_k_indices.unsqueeze(-1).expand(-1, -
+                                                     1, -1, -1, -1, self.output_size)
+        expert_outputs = expert_outputs.gather(
+            0, indices.permute(5, 0, 1, 2, 3, 4)).permute(1, 2, 3, 4, 5, 0)
+
+        final_output = (expert_outputs *
+                        top_k_probs.unsqueeze(-1)).sum(dim=-2)
+        self.top_k_indices = top_k_indices
+        self._update_expert_biases()
+        return final_output
+
+
 class MultiContrastEncoderBlock(nn.Module):
     def __init__(self, dim, window_size, shift_size, num_contrasts, num_heads):
         super().__init__()
@@ -97,12 +175,7 @@ class MultiContrastEncoderBlock(nn.Module):
         self.attn = WindowAttention(
             dim, window_size, num_contrasts, num_heads, 1)
         self.norm2 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, 4 * dim),
-            nn.GELU(),
-            nn.Linear(4 * dim, dim),
-            nn.Dropout(0.1)
-        )
+        self.mlp = MoELayer(dim, dim, num_contrasts)
 
     def forward(self, x, selected_contrasts):
         B, M, H, W, C = x.shape

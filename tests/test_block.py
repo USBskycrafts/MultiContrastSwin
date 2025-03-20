@@ -153,3 +153,12 @@ class TestImageDecoding(unittest.TestCase):
         decoding = MultiContrastImageDecoding(16, 1, 8)
         y = decoding(x, [0, 2, 7])
         self.assertEqual(y.shape, (1, 3, 8, 8, 1))
+
+
+class TestMoELayer(unittest.TestCase):
+    def test_forward(self):
+        # Create a dummy input tensor
+        mlp = MoELayer(16, 16, 3)
+        x = torch.randn(1, 3, 8, 8, 16)
+        y = mlp(x)
+        self.assertEqual(y.shape, (1, 3, 8, 8, 16))
