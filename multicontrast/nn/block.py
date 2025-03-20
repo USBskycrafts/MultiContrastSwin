@@ -114,7 +114,7 @@ class MoELayer(nn.Module):
         if not use_aux_loss:
             self.expert_biases = nn.Parameter(torch.zeros(num_experts))
 
-    def _update_expert_biases(self, update_rate=1e-5):
+    def _update_expert_biases(self, update_rate=1e-3):
         expert_counts = torch.bincount(self.top_k_indices.flatten(),
                                        minlength=self.num_experts)
         avg_count = expert_counts.float().mean()
