@@ -158,7 +158,8 @@ class MoELayer(nn.Module):
         final_output = (expert_outputs *
                         top_k_probs.unsqueeze(-1)).sum(dim=-2)
         self.top_k_indices = top_k_indices
-        self._update_expert_biases()
+        if self.training:
+            self._update_expert_biases()
         return final_output
 
 

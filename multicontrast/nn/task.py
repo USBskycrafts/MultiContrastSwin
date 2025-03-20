@@ -40,7 +40,7 @@ class MultiModalityGeneration(BaseModel):
         # recon = self.model(
         #     x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
         # * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
-        return self.l1_loss(pred, y) * 0.2 + self.perceptual_loss(pred, y).mean() * 0.8
+        return self.l1_loss(pred, y) * 0.4 + self.perceptual_loss(pred, y).mean() * 0.6
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
