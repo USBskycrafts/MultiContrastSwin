@@ -81,7 +81,8 @@ class MultiContrastGeneration(Model):
                                          self.optimizer)
 
         scheduler = CosineAnnealingScheduler(self.optimizer, "lr",
-                                             self.learning_rate, 0.1 * self.learning_rate, 1000)
+                                             self.learning_rate, 0.1 * self.learning_rate, 1000,
+                                             cycle_mult=1.1)
         scheduler = create_lr_scheduler_with_warmup(
             scheduler,
             warmup_start_value=0.0,
