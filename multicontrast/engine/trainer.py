@@ -119,7 +119,6 @@ class SupervisedTrainer(BaseTrainer):
                               generated_contrats, y)
         scaler_loss = self.scaler.scale(loss)
         scaler_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self.optimizer.zero_grad()
@@ -214,7 +213,7 @@ class GANTrainer(BaseTrainer):
                 batch['generated_contrasts'],
                 real_label
             )
-        g_loss = 10 * g_per_loss + g_against_loss
+        g_loss = g_per_loss + g_against_loss * 0.1
         scaled_loss = self.g_scaler.scale(g_loss)
         # if not isinstance(scaled_loss, torch.Tensor):
         #     raise RuntimeError(

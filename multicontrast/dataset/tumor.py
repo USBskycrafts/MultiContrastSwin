@@ -10,125 +10,104 @@ from torch.utils.data import Dataset
 
 class MultiModalMRIDataset(Dataset):
     def __init__(self, root_dir, modalities, slice_axis=2,
-                 transform=None, use_cache=True, cache_size=64):
+                 transform=None):
         """
         参数:
             root_dir (str): 包含样本子目录的根目录
-            modalities (list): 模态名称列表 (对应文件名) ,他
+            modalities (list): 模态名称列表 (对应文件名)
             slice_axis (int): 切片轴向 (0:Sagittal, 1:Coronal, 2:Axial)
             transform (callable): 可选的图像增强变换
-            use_cache (bool): 是否缓存加载的3D数据
         """
         self.root_dir = root_dir
         self.modalities = modalities
         self.slice_axis = slice_axis
         self.transform = transform
-        self.use_cache = use_cache
-        self.cache = OrderedDict()
-        self.min_max_cache = {}
-        self.cache_size = cache_size
+        self.volume_data = {}
 
-        # 收集有效样本
-        self.samples = []
-        for sample_dir in os.listdir(root_dir):
-            sample_path = os.path.join(root_dir, sample_dir)
-            if os.path.isdir(sample_path):
-                valid = True
-                shapes = []
+        # 多线程加载所有样本数据
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # 收集有效样本路径
+        sample_paths = [os.path.join(root_dir, d) 
+                      for d in os.listdir(root_dir) 
+                      if os.path.isdir(os.path.join(root_dir, d))]
+                      
+        # 并行加载数据
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for path in sample_paths:
+                futures.append(executor.submit(self._load_volume, path))
+            
+            for future, path in zip(futures, sample_paths):
+                try:
+                    self.volume_data[path] = future.result()
+                except Exception as e:
+                    print(f"加载失败 {path}: {str(e)}")
 
-                # 检查模态完整性和形状一致性
-                for modality in modalities:
-                    modality = os.path.basename(
-                        sample_path) + f"_{modality}"
-                    file_path = os.path.join(sample_path, f"{modality}.nii.gz")
-                    if not os.path.exists(file_path):
-                        valid = False
-                        break
-
-                    # 快速加载头部信息检查形状
-                    img = nib.nifti1.load(file_path)
-                    shapes.append(img.shape)
-
-                if valid and len(set(shapes)) == 1:
-                    self.samples.append(sample_path)
-
-        # 预计算切片索引映射
+        # 预计算切片索引
         self.slice_indices = []
-        for sample_idx, sample_path in enumerate(self.samples):
-            # 使用第一个模态获取切片数量
-            basename = os.path.basename(sample_path)
-            sample_shapes = nib.nifti1.load(os.path.join(
-                sample_path, f"{basename}_{modalities[0]}.nii.gz")).shape
-            num_slices = sample_shapes[slice_axis]
-            self.slice_indices.extend(
-                [(sample_idx, slice_idx) for slice_idx in range(min(num_slices // 4, 27), max(num_slices // 4 * 3, 127))])
+        for sample_path in sample_paths:
+            if sample_path not in self.volume_data:
+                continue
+            num_slices = self.volume_data[sample_path].shape[self.slice_axis+1]
+            valid_slices = range(min(num_slices//4, 27), max(num_slices//4*3, 127))
+            self.slice_indices.extend([
+                (sample_path, slice_idx) 
+                for slice_idx in valid_slices
+            ])
 
     def __len__(self):
         return len(self.slice_indices)
 
-    def _load_volume(self, sample_path, idx):
-        """加载单个样本的所有模态数据"""
+    def _load_volume(self, sample_path):
+        """并行加载单个样本的所有模态数据"""
         volumes = []
+        basename = os.path.basename(sample_path)
+        
         for modality in self.modalities:
-            basename = os.path.basename(sample_path)
-            img = nib.nifti1.load(os.path.join(
-                sample_path, f"{basename}_{modality}.nii.gz"))
-            img = nib.funcs.as_closest_canonical(img)  # 标准化方向
+            file_path = os.path.join(
+                sample_path, f"{basename}_{modality}.nii.gz")
+            img = nib.nifti1.load(file_path)
+            img = nib.funcs.as_closest_canonical(img)
             data = img.get_fdata(dtype=np.float32)
-            data = self._normalize(data, idx, modality)
+            data = self._normalize(data)
             volumes.append(data)
+            
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
-    def _normalize(self, volume, idx, modality):
-        if self.min_max_cache.get(idx, None) is None:
-            self.min_max_cache[idx] = {}
-        if modality not in self.min_max_cache[idx]:
-            vmin = np.min(volume)
-            vmax = np.max(volume)
-            self.min_max_cache[idx][modality] = (vmin, vmax)
-        else:
-            vmin, vmax = self.min_max_cache[idx][modality]
-        volume = (volume - vmin) / (vmax - vmin) * \
-            2 - 1 if vmax != 0 else -1
-        volume = np.clip(volume, -1, 1)
-        return volume
+    def _normalize(self, volume):
+        """批量归一化处理"""
+        vmin = np.min(volume)
+        vmax = np.max(volume)
+        volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
+        return np.clip(volume, -1, 1)
 
     def __getitem__(self, idx):
-        sample_idx, slice_idx = self.slice_indices[idx]
-        sample_path = self.samples[sample_idx]
+        sample_path, slice_idx = self.slice_indices[idx]
+        volume = self.volume_data[sample_path]
 
-        # 从缓存或磁盘加载数据
-        if self.use_cache and sample_idx in self.cache:
-            self.cache.move_to_end(sample_idx)
-            volume = self.cache[sample_idx]
+        # 提取切片数据
+        if self.slice_axis == 0:
+            slice_data = volume[:, slice_idx, :, :]
+        elif self.slice_axis == 1:
+            slice_data = volume[:, :, slice_idx, :]
         else:
-            volume = self._load_volume(sample_path, idx)
-            if self.use_cache:
-                if len(self.cache) > self.cache_size:
-                    self.cache.popitem(last=False)  # 移除最旧的缓存项
-                self.cache[sample_idx] = volume
+            slice_data = volume[:, :, :, slice_idx]
 
-        # 提取多模态切片 (M, H, W, 1)
-        slice_data = volume[:, slice_idx, :, :] if self.slice_axis == 0 else \
-            volume[:, :, slice_idx, :] if self.slice_axis == 1 else \
-            volume[:, :, :, slice_idx]
-
-        # 转换为Tensor并应用变换
-        slice_data = torch.from_numpy(slice_data.copy()).float()
-        slice_data = slice_data.unsqueeze(dim=-1)
+        # 转换为Tensor
+        slice_data = torch.from_numpy(slice_data.copy()).float().unsqueeze(-1)
         if self.transform:
             slice_data = self.transform(slice_data)
 
-        sample_dataset_idx = int(Path(sample_path).stem.split('_')[1])
-        sample_idx = int(sample_dataset_idx)
-        return slice_data, sample_dataset_idx, slice_idx
+        sample_id = int(Path(sample_path).stem.split('_')[1])
+        return slice_data, sample_id, slice_idx
 
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
     def __init__(self, root_dir, modalities, transform=None, use_cache=True,
                  selected_contrasts=None, generated_contrasts=None):
         # using axis=2 to extract slices along the third dimension (depth)
-        super().__init__(root_dir, modalities, 2, transform, use_cache)
+        super().__init__(root_dir, modalities, 2, transform)
         self.selected_contrasts = selected_contrasts
         self.generated_contrasts = generated_contrasts
 

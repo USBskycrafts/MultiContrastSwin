@@ -6,7 +6,7 @@ from typing import Union
 
 import torch
 from ignite.distributed import auto_dataloader, auto_model, auto_optim
-from ignite.handlers import CosineAnnealingScheduler
+from ignite.handlers import CosineAnnealingScheduler,  create_lr_scheduler_with_warmup
 from ignite.engine import Events
 from multicontrast.dataset.tumor import MultiModalGenerationDataset
 from multicontrast.engine.trainer import GANTrainer, SupervisedTrainer
@@ -81,7 +81,14 @@ class MultiContrastGeneration(Model):
                                          self.optimizer)
 
         scheduler = CosineAnnealingScheduler(self.optimizer, "lr",
-                                             self.learning_rate, 0.1 * self.learning_rate, 1000)
+                                             self.learning_rate, 0.1 * self.learning_rate, 1000,
+                                             cycle_mult=1.1)
+        scheduler = create_lr_scheduler_with_warmup(
+            scheduler,
+            warmup_start_value=0.0,
+            warmup_duration=200,
+            warmup_end_value=self.learning_rate,
+        )
         self.trainer.register_events(Events.ITERATION_STARTED, scheduler)
         self.data_loader = auto_dataloader(
             self.training_dataset,
@@ -184,16 +191,16 @@ class MultiContrastGANGeneration(Model):
         self.generator = auto_model(
             self.generator, find_unused_parameters=True)
         self.g_lr = config.getfloat('train', 'g_lr')
-        self.g_optim = torch.optim.Adam(self.generator.parameters(),
-                                        lr=self.g_lr)
+        self.g_optim = torch.optim.AdamW(self.generator.parameters(),
+                                         lr=self.g_lr)
         self.g_optim = auto_optim(self.g_optim)
         # ----------------------------------------------------------------------------
         self.discriminator = MultiContrastDiscrimination(**model_config)
         self.discriminator = auto_model(
             self.discriminator, find_unused_parameters=True)
         self.d_lr = config.getfloat('train', 'd_lr')
-        self.d_optim = torch.optim.Adam(self.discriminator.parameters(),
-                                        self.d_lr)
+        self.d_optim = torch.optim.AdamW(self.discriminator.parameters(),
+                                         self.d_lr)
         self.d_optim = auto_optim(self.d_optim)
 
         self.training_dataset = MultiModalGenerationDataset(
@@ -206,12 +213,27 @@ class MultiContrastGANGeneration(Model):
                                   self.discriminator,
                                   self.g_optim,
                                   self.d_optim)
-        g_scheduler = CosineAnnealingScheduler(self.g_optim, "lr",
-                                               self.g_lr, 0.1 * self.g_lr, 1000)
-        d_scheduler = CosineAnnealingScheduler(self.d_optim, "lr",
-                                               self.d_lr, 0.1 * self.d_lr, 1000)
-        self.trainer.register_events(Events.ITERATION_STARTED, g_scheduler)
-        self.trainer.register_events(Events.ITERATION_STARTED, d_scheduler)
+        g_sche = CosineAnnealingScheduler(self.g_optim, "lr",
+                                          self.g_lr, 0.1 * self.g_lr, 1000,
+                                          cycle_mult=1.1)
+        g_sche = create_lr_scheduler_with_warmup(
+            g_sche,
+            warmup_start_value=0.0,
+            warmup_duration=200,
+            warmup_end_value=self.g_lr,
+        )
+        self.trainer.register_events(Events.ITERATION_STARTED, g_sche)
+        # --------------------------------------------------------------------
+        d_sche = CosineAnnealingScheduler(self.d_optim, "lr",
+                                          self.d_lr, 0.1 * self.d_lr, 1000,
+                                          cycle_mult=1.1)
+        d_sche = create_lr_scheduler_with_warmup(
+            d_sche,
+            warmup_start_value=0.0,
+            warmup_duration=200,
+            warmup_end_value=self.g_lr,
+        )
+        self.trainer.register_events(Events.ITERATION_STARTED, d_sche)
 
         self.data_loader = auto_dataloader(
             self.training_dataset,
