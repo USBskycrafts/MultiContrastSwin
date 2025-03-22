@@ -214,7 +214,7 @@ class MultiContrastGANGeneration(Model):
                                   self.g_optim,
                                   self.d_optim)
         g_sche = CosineAnnealingScheduler(self.g_optim, "lr",
-                                          self.g_lr, 0.1 * self.g_lr, 1000,
+                                          self.g_lr, 0, 2000,
                                           cycle_mult=1.1)
         g_sche = create_lr_scheduler_with_warmup(
             g_sche,
@@ -225,7 +225,7 @@ class MultiContrastGANGeneration(Model):
         self.trainer.register_events(Events.ITERATION_STARTED, g_sche)
         # --------------------------------------------------------------------
         d_sche = CosineAnnealingScheduler(self.d_optim, "lr",
-                                          self.d_lr, 0.1 * self.d_lr, 1000,
+                                          self.d_lr, 0, 2000,
                                           cycle_mult=1.1)
         d_sche = create_lr_scheduler_with_warmup(
             d_sche,
