@@ -1,3 +1,5 @@
+import functools
+import operator
 from re import A
 from typing import List
 
@@ -99,67 +101,91 @@ class MLP(nn.Module):
 
 
 class MoELayer(nn.Module):
-    def __init__(self, input_size, output_size, num_experts, use_aux_loss=False):
+    def __init__(self, input_size, output_size, num_contrasts, k=1, use_aux_loss=False):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
-        self.num_experts = num_experts
-        # self.k = k
+        self.num_experts = num_contrasts * (num_contrasts - 1) // 2
+        self.k = k  # 明确指定选择的专家数量
         self.use_aux_loss = use_aux_loss
 
         self.experts = nn.ModuleList(
-            [MLP(input_size, 2 * input_size, output_size) for _ in range(num_experts)])
-        self.gate = nn.Linear(input_size, num_experts)
+            [MLP(input_size, 2 * input_size, output_size) for _ in range(self.num_experts)])
+        self.gate = nn.Linear(input_size, self.num_experts)
 
         if not use_aux_loss:
-            self.expert_biases = nn.Parameter(torch.zeros(num_experts))
+            self.expert_biases = nn.Parameter(torch.zeros(self.num_experts))
 
     def _update_expert_biases(self, update_rate=1e-3):
-        expert_counts = torch.bincount(self.top_k_indices.flatten(),
-                                       minlength=self.num_experts)
+        # 展平所有位置的专家选择
+        expert_counts = torch.bincount(
+            self.top_k_indices.flatten(), minlength=self.num_experts)
         avg_count = expert_counts.float().mean()
-        for i, count in enumerate(expert_counts):
-            # b_i = b_i + u + sign(e_i)
-            # note: this is \bar{c_i} - c_i, NOT c_i - \bar{c_i}, which will push the network to
-            # be maximally unbalanced. Really important to get this part right!!!
-            error = avg_count - count.float()
-            self.expert_biases.data[i] += update_rate * torch.sign(
-                error)
+        for i in range(self.num_experts):
+            error = avg_count - expert_counts[i].float()
+            self.expert_biases.data[i] += update_rate * torch.sign(error)
 
     def forward(self, x):
-        # s_{i,t}
-        B, M, H, W, C = x.shape
-        gate_output = self.gate(x)
-        # use sigmoid gate instead of softmax
-        gate_probs = torch.sigmoid(gate_output)
+        original_shape = x.shape
+        B, M, H, W, C = original_shape
 
-        # do top k based on s_{i,t} + b_i
+        # 展平空间和位置维度
+        x_flat = x.view(-1, C)  # (B*M*H*W, C)
+
+        # 计算门控输出
+        gate_output = self.gate(x_flat)  # (B*M*H*W, num_experts)
+
+        # 应用专家偏置（如果启用）
         if not self.use_aux_loss:
             gate_logits = gate_output + self.expert_biases
         else:
             gate_logits = gate_output
 
-        _, top_k_indices = torch.topk(gate_logits, M, dim=-1)
+        # 选择top-k专家
+        top_k_values, top_k_indices = torch.topk(
+            gate_logits, self.k, dim=-1)  # (B*M*H*W, k)
 
-        # ...but make sure we use the unbiased s_{i,t} as the gate value
-        top_k_probs = gate_probs.gather(-1, top_k_indices)
+        # 计算门控概率并归一化
+        gate_probs = torch.sigmoid(top_k_values)
+        gate_probs = gate_probs / gate_probs.sum(dim=-1, keepdim=True)  # 归一化
 
-        # normalize to sum to 1
-        top_k_probs = top_k_probs / top_k_probs.sum(dim=-1, keepdim=True)
+        # 准备索引数据
+        flat_indices = top_k_indices.view(-1)  # (B*M*H*W*k,)
+        batch_indices = torch.arange(x_flat.size(
+            0), device=x.device).repeat_interleave(self.k)  # (B*M*H*W*k,)
+        probs_flat = gate_probs.view(-1)  # (B*M*H*W*k,)
 
-        # get the routed expert outputs
-        expert_outputs = torch.stack(
-            [expert(x) for expert in self.experts])
-        indices = top_k_indices.unsqueeze(-1).expand(-1, -
-                                                     1, -1, -1, -1, self.output_size)
-        expert_outputs = expert_outputs.gather(
-            0, indices.permute(5, 0, 1, 2, 3, 4)).permute(1, 2, 3, 4, 5, 0)
+        # 找出唯一需要计算的专家
+        unique_experts = torch.unique(flat_indices)
 
-        final_output = (expert_outputs *
-                        top_k_probs.unsqueeze(-1)).sum(dim=-2)
-        self.top_k_indices = top_k_indices
-        if self.training:
+        # 初始化输出
+        final_output = torch.zeros_like(x_flat)  # (B*M*H*W, output_size)
+
+        # 动态计算被选中的专家
+        for expert_idx in unique_experts:
+            # 找出当前专家需要处理的位置
+            mask = (flat_indices == expert_idx)
+            if not mask.any():
+                continue
+
+            # 获取对应的输入和权重
+            expert_input = x_flat[batch_indices[mask]]
+            expert_weight = probs_flat[mask].unsqueeze(-1)
+
+            # 计算专家输出并加权
+            expert_output = self.experts[expert_idx](expert_input)
+            final_output.index_add_(
+                0, batch_indices[mask], expert_output * expert_weight)
+
+        # 恢复原始形状
+        final_output = final_output.view(
+            *original_shape[:-1], self.output_size)
+        self.top_k_indices = top_k_indices.view(
+            original_shape[:-1] + (self.k,))
+
+        if self.training and not self.use_aux_loss:
             self._update_expert_biases()
+
         return final_output
 
 
