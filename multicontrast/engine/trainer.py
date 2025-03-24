@@ -83,11 +83,6 @@ class BaseTrainer(metaclass=ABCMeta):
             tag="training",
             output_transform=lambda loss: {"loss": loss}
         )
-        tb_logger.attach(
-            self.engine,
-            event_name=Events.EPOCH_COMPLETED,
-            log_handler=WeightsHistHandler(getattr(self, "model"))
-        )
 
     def register_validation(self, data_loader, every_epochs):
         self.engine.add_event_handler(

@@ -105,18 +105,20 @@ class MoELayer(nn.Module):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
-        self.num_experts = num_contrasts * (num_contrasts - 1) // 2
+
+        num_experts = num_contrasts
+        self.num_experts = num_experts
         self.k = k  # 明确指定选择的专家数量
         self.use_aux_loss = use_aux_loss
 
         self.experts = nn.ModuleList(
-            [MLP(input_size, 2 * input_size, output_size) for _ in range(self.num_experts)])
-        self.gate = nn.Linear(input_size, self.num_experts)
+            [MLP(input_size, 2 * input_size, output_size) for _ in range(num_experts)])
+        self.gate = nn.Linear(input_size, num_experts)
 
         if not use_aux_loss:
-            self.expert_biases = nn.Parameter(torch.zeros(self.num_experts))
+            self.expert_biases = nn.Parameter(torch.zeros(num_experts))
 
-    def _update_expert_biases(self, update_rate=1e-3):
+    def _update_expert_biases(self, update_rate=1e-5):
         # 展平所有位置的专家选择
         expert_counts = torch.bincount(
             self.top_k_indices.flatten(), minlength=self.num_experts)
