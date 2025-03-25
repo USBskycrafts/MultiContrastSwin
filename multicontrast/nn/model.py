@@ -86,3 +86,25 @@ class MultiContrastDiscriminator(nn.Module):
         for layer in self.down_layers:
             x = layer(x, generated_contrats)
         return self.out_proj(x)
+
+
+class MultiScaleDiscriminator(nn.Module):
+    def __init__(self, input_nc=3, ndf=64, n_layers=3, num_scales=3):
+        super().__init__()
+        self.num_scales = num_scales
+        self.discriminators = nn.ModuleList()
+
+        for _ in range(num_scales):
+            netD = NLayerDiscriminator(input_nc, ndf, n_layers)
+            self.discriminators.append(netD)
+
+    def forward(self, x):
+        outputs = []
+        for scale, netD in enumerate(self.discriminators):
+            # 下采样输入图像（多尺度处理）
+            if scale > 0:
+                x = nn.functional.interpolate(
+                    x, scale_factor=0.5, mode='bilinear', align_corners=False
+                )
+            outputs.append(netD(x))
+        return outputs  # 返回各尺度判别结果

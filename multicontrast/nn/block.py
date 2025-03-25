@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+from torch.nn.utils import spectral_norm
 
 from .utils import *
 
@@ -106,7 +107,7 @@ class MoELayer(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
 
-        num_experts = num_contrasts
+        num_experts = 1 << num_contrasts - 2
         self.num_experts = num_experts
         self.k = k  # 明确指定选择的专家数量
         self.use_aux_loss = use_aux_loss
@@ -405,3 +406,17 @@ class MultiContrastImageDecoding(nn.Module):
 
     def forward(self, x, selected_contrats: List[int]):
         return torch.stack([self.decodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
+
+
+class SpectralNormConv2d(nn.Module):
+    """谱归一化卷积层 + LeakyReLU"""
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0):
+        super().__init__()
+        self.conv = spectral_norm(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        )
+        self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
+
+    def forward(self, x):
+        return self.leaky_relu(self.conv(x))

@@ -4,7 +4,7 @@ from typing import List
 import torch
 import torch.nn as nn
 
-from multicontrast.nn.model import MultiContrastSwinTransformer, MultiContrastDiscriminator
+from multicontrast.nn.model import MultiContrastSwinTransformer, MultiScaleDiscriminator
 from multicontrast.nn.loss import CustomLPIPS, L1Loss
 
 
@@ -49,17 +49,30 @@ class MultiModalityGeneration(BaseModel):
 class MultiContrastDiscrimination(BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.model = MultiContrastDiscriminator(*args, **kwargs)
+        self.model = MultiScaleDiscriminator(
+            input_nc=1, ndf=64, n_layers=3, num_scales=3)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
+    def _reshape_input(self, x):
+        # x: (B, M, H, W, C)
+        B, M, H, W, C = x.shape
+        assert C == 1, "Input channels must be 1"
+        return x.permute(0, 1, 4, 2, 3).contiguous()\
+            .view(-1, C, H, W)
+
     def loss(self, x, generated_contrasts, label):
-        pred = self.model(x, generated_contrasts)
-        if label.item() == 1:
-            return self.loss_fn(pred, torch.ones_like(pred))
-        elif label.item() == 0:
-            return self.loss_fn(pred, torch.zeros_like(pred))
-        else:
-            raise ValueError("Label must be 0 or 1")
+        x = self._reshape_input(x)  # (B*M, C, H, W)
+        preds = self.model(x)
+        loss = 0
+        for pred in preds:
+            if label.item() == 1:
+                loss += self.loss_fn(pred, torch.ones_like(pred))
+            elif label.item() == 0:
+                loss += self.loss_fn(pred, torch.zeros_like(pred))
+            else:
+                raise ValueError("Label must be 0 or 1")
+        return loss / len(preds)
 
     def predict(self, x, generated_contrasts):
-        return self.model(x, generated_contrasts)
+        x = self._reshape_input(x)  # (B*M, C, H, W)
+        return self.model(x)
