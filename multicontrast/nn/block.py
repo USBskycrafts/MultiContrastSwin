@@ -1,8 +1,11 @@
+import functools
+import operator
 from re import A
 from typing import List
 
 import torch
 import torch.nn as nn
+from torch.nn.utils import spectral_norm
 
 from .utils import *
 
@@ -84,6 +87,117 @@ class WindowAttention(nn.Module):
         return x
 
 
+class MLP(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(input_size, hidden_size),
+            nn.GELU(),
+            nn.Linear(hidden_size, output_size),
+            nn.Dropout(0.1)
+        )
+
+    def forward(self, x):
+        return self.mlp(x)
+
+
+class MoELayer(nn.Module):
+    def __init__(self, input_size, output_size, num_contrasts, k=1, use_aux_loss=False):
+        super().__init__()
+        self.input_size = input_size
+        self.output_size = output_size
+
+        num_experts = 1 << num_contrasts - 2
+        self.num_experts = num_experts
+        self.k = k  # 明确指定选择的专家数量
+        self.use_aux_loss = use_aux_loss
+
+        self.experts = nn.ModuleList(
+            [MLP(input_size, 2 * input_size, output_size) for _ in range(num_experts)])
+        self.gate = nn.Linear(input_size, num_experts)
+
+        if not use_aux_loss:
+            self.expert_biases = nn.Parameter(torch.zeros(num_experts))
+
+    def _update_expert_biases(self, update_rate=1e-5):
+        # 展平所有位置的专家选择
+        expert_counts = torch.bincount(
+            self.top_k_indices.flatten(), minlength=self.num_experts)
+        avg_count = expert_counts.float().mean()
+        for i in range(self.num_experts):
+            error = avg_count - expert_counts[i].float()
+            self.expert_biases.data[i] += update_rate * torch.sign(error)
+
+    def forward(self, x):
+        original_shape = x.shape
+        B, M, H, W, C = original_shape
+
+        # 展平空间和位置维度
+        x_flat = x.view(-1, C)  # (B*M*H*W, C)
+
+        # 计算门控输出
+        gate_output = self.gate(x_flat)  # (B*M*H*W, num_experts)
+
+        # 应用专家偏置（如果启用）
+        if not self.use_aux_loss:
+            gate_logits = gate_output + self.expert_biases
+        else:
+            gate_logits = gate_output
+
+        # 选择top-k专家
+        top_k_values, top_k_indices = torch.topk(
+            gate_logits, self.k, dim=-1)  # (B*M*H*W, k)
+
+        # 计算门控概率并归一化
+        gate_probs = torch.sigmoid(top_k_values)
+        gate_probs = gate_probs / gate_probs.sum(dim=-1, keepdim=True)  # 归一化
+
+        # 准备索引数据
+        flat_indices = top_k_indices.view(-1)  # (B*M*H*W*k,)
+        batch_indices = torch.arange(x_flat.size(
+            0), device=x.device).repeat_interleave(self.k)  # (B*M*H*W*k,)
+        probs_flat = gate_probs.view(-1)  # (B*M*H*W*k,)
+
+        # 找出唯一需要计算的专家
+        unique_experts = torch.unique(flat_indices)
+
+        # 初始化输出
+        final_output = torch.zeros_like(x_flat)  # (B*M*H*W, output_size)
+
+        # 动态计算被选中的专家
+        for expert_idx in unique_experts:
+            # 找出当前专家需要处理的位置
+            mask = (flat_indices == expert_idx)
+            if not mask.any():
+                continue
+
+            # 获取对应的输入和权重
+            expert_input = x_flat[batch_indices[mask]]
+            expert_weight = probs_flat[mask].unsqueeze(-1)
+
+            # 计算专家输出并加权
+            expert_output = self.experts[expert_idx](expert_input)
+            expanded_indices = batch_indices[mask].unsqueeze(
+                -1).expand(-1, expert_output.size(-1))
+
+            # Use scatter_add with proper dimension handling
+            final_output.scatter_add_(
+                0,
+                expanded_indices,
+                expert_output * expert_weight
+            )
+        # 恢复原始形状
+        final_output = final_output.view(
+            *original_shape[:-1], self.output_size)
+        self.top_k_indices = top_k_indices.view(
+            original_shape[:-1] + (self.k,))
+
+        if self.training and not self.use_aux_loss:
+            self._update_expert_biases()
+
+        return final_output
+
+
 class MultiContrastEncoderBlock(nn.Module):
     def __init__(self, dim, window_size, shift_size, num_contrasts, num_heads):
         super().__init__()
@@ -97,12 +211,7 @@ class MultiContrastEncoderBlock(nn.Module):
         self.attn = WindowAttention(
             dim, window_size, num_contrasts, num_heads, 1)
         self.norm2 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, 4 * dim),
-            nn.GELU(),
-            nn.Linear(4 * dim, dim),
-            nn.Dropout(0.1)
-        )
+        self.mlp = MLP(dim, dim * 4, dim)
 
     def forward(self, x, selected_contrasts):
         B, M, H, W, C = x.shape
@@ -141,12 +250,7 @@ class MultiContrastDecoderBlock(nn.Module):
         self.attn2 = WindowAttention(
             dim, window_size, num_contrasts, num_heads, 2)
         self.norm3 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, 4 * dim),
-            nn.GELU(),
-            nn.Linear(4 * dim, dim),
-            nn.Dropout(0.1)
-        )
+        self.mlp = MLP(dim, dim * 4, dim)
 
     def forward(self, x, encoded_features, selected_contrasts):
         B, M, H, W, C = x.shape
@@ -308,3 +412,17 @@ class MultiContrastImageDecoding(nn.Module):
 
     def forward(self, x, selected_contrats: List[int]):
         return torch.stack([self.decodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
+
+
+class SpectralNormConv2d(nn.Module):
+    """谱归一化卷积层 + LeakyReLU"""
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0):
+        super().__init__()
+        self.conv = spectral_norm(
+            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        )
+        self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
+
+    def forward(self, x):
+        return self.leaky_relu(self.conv(x))

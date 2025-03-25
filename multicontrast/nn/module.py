@@ -138,3 +138,41 @@ class Decoder(nn.Module):
         x = self.expands(x, encoded_features[-1], selected_contrats)
 
         return x
+
+
+class NLayerDiscriminator(nn.Module):
+    """单尺度判别器（PatchGAN + 谱归一化）"""
+
+    def __init__(self, input_nc=3, ndf=64, n_layers=3):
+        super().__init__()
+        layers = [
+            # 第一层不使用谱归一化（原始论文设计）
+            nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=2),
+            nn.LeakyReLU(0.2, True)
+        ]
+
+        # 中间层：逐步增加通道数
+        nf_mult = 1
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2**n, 8)
+            layers += [
+                SpectralNormConv2d(
+                    ndf * nf_mult_prev, ndf * nf_mult,
+                    kernel_size=4, stride=2, padding=2
+                )
+            ]
+
+        # 最后一层：输出1通道的Patch判别结果
+        nf_mult_prev = nf_mult
+        layers += [
+            spectral_norm(
+                nn.Conv2d(ndf * nf_mult_prev, 1,
+                          kernel_size=4, stride=1, padding=2)
+            )
+        ]
+
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)

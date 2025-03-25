@@ -5,7 +5,8 @@ import torch
 from ignite.engine import Engine, Events
 from ignite.handlers import (Checkpoint, ProgressBar, TensorboardLogger,
                              TerminateOnNan, global_step_from_engine)
-from ignite.metrics import RunningAverage, PSNR, SSIM
+from ignite.handlers.tensorboard_logger import WeightsHistHandler
+from ignite.metrics import PSNR, SSIM, RunningAverage
 from torch.cuda.amp.autocast_mode import autocast
 from torch.cuda.amp.grad_scaler import GradScaler
 

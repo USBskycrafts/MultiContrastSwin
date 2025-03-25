@@ -10,60 +10,50 @@ from torch.utils.data import Dataset
 
 class MultiModalMRIDataset(Dataset):
     def __init__(self, root_dir, modalities, slice_axis=2,
-                 transform=None):
+                 transform=None, enable_mem_monitor=False):
         """
         参数:
             root_dir (str): 包含样本子目录的根目录
             modalities (list): 模态名称列表 (对应文件名)
             slice_axis (int): 切片轴向 (0:Sagittal, 1:Coronal, 2:Axial)
             transform (callable): 可选的图像增强变换
+            enable_mem_monitor (bool): 是否启用内存监控
         """
         self.root_dir = root_dir
         self.modalities = modalities
         self.slice_axis = slice_axis
         self.transform = transform
-        self.volume_data = {}
 
-        # 多线程加载所有样本数据
-        from concurrent.futures import ThreadPoolExecutor
-        
         # 收集有效样本路径
-        sample_paths = [os.path.join(root_dir, d) 
-                      for d in os.listdir(root_dir) 
-                      if os.path.isdir(os.path.join(root_dir, d))]
-                      
-        # 并行加载数据
-        with ThreadPoolExecutor() as executor:
-            futures = []
-            for path in sample_paths:
-                futures.append(executor.submit(self._load_volume, path))
-            
-            for future, path in zip(futures, sample_paths):
-                try:
-                    self.volume_data[path] = future.result()
-                except Exception as e:
-                    print(f"加载失败 {path}: {str(e)}")
+        self.sample_paths = [os.path.join(root_dir, d)
+                             for d in os.listdir(root_dir)
+                             if os.path.isdir(os.path.join(root_dir, d))]
 
-        # 预计算切片索引
-        self.slice_indices = []
-        for sample_path in sample_paths:
-            if sample_path not in self.volume_data:
-                continue
-            num_slices = self.volume_data[sample_path].shape[self.slice_axis+1]
-            valid_slices = range(min(num_slices//4, 27), max(num_slices//4*3, 127))
-            self.slice_indices.extend([
-                (sample_path, slice_idx) 
-                for slice_idx in valid_slices
-            ])
+        # DDP环境下共享文件列表
+        if torch.distributed.is_initialized():
+            world_size = torch.distributed.get_world_size()
+            self.sample_paths = self.sample_paths[torch.distributed.get_rank(
+            )::world_size]
+
+        # 动态切片参数
+        self.min_slice = 27
+        self.max_slice = 127
+        self.enable_mem_monitor = enable_mem_monitor
+        self.mem_stats = {
+            'peak_mem': 0,
+            'avg_mem': 0,
+            'count': 0
+        }
 
     def __len__(self):
-        return len(self.slice_indices)
+        # 动态计算总切片数（样本数 × 每个样本的有效切片数）
+        return len(self.sample_paths) * (self.max_slice - self.min_slice)
 
     def _load_volume(self, sample_path):
         """并行加载单个样本的所有模态数据"""
         volumes = []
         basename = os.path.basename(sample_path)
-        
+
         for modality in self.modalities:
             file_path = os.path.join(
                 sample_path, f"{basename}_{modality}.nii.gz")
@@ -72,7 +62,7 @@ class MultiModalMRIDataset(Dataset):
             data = img.get_fdata(dtype=np.float32)
             data = self._normalize(data)
             volumes.append(data)
-            
+
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
     def _normalize(self, volume):
@@ -83,8 +73,23 @@ class MultiModalMRIDataset(Dataset):
         return np.clip(volume, -1, 1)
 
     def __getitem__(self, idx):
-        sample_path, slice_idx = self.slice_indices[idx]
-        volume = self.volume_data[sample_path]
+        # 动态计算样本索引和切片索引
+        sample_idx = idx // (self.max_slice - self.min_slice)
+        slice_idx = idx % (self.max_slice - self.min_slice) + self.min_slice
+        sample_path = self.sample_paths[sample_idx]
+
+        if self.enable_mem_monitor:
+            import psutil
+            process = psutil.Process()
+            mem = process.memory_info().rss / 1024 / 1024  # MB
+            self.mem_stats['peak_mem'] = max(self.mem_stats['peak_mem'], mem)
+            self.mem_stats['avg_mem'] = (
+                self.mem_stats['avg_mem'] * self.mem_stats['count'] + mem
+            ) / (self.mem_stats['count'] + 1)
+            self.mem_stats['count'] += 1
+
+        # 内存映射加载单样本数据
+        volume = self._load_volume(sample_path)
 
         # 提取切片数据
         if self.slice_axis == 0:
@@ -105,9 +110,9 @@ class MultiModalMRIDataset(Dataset):
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
     def __init__(self, root_dir, modalities, transform=None, use_cache=True,
-                 selected_contrasts=None, generated_contrasts=None):
+                 selected_contrasts=None, generated_contrasts=None, enable_mem_monitor=False):
         # using axis=2 to extract slices along the third dimension (depth)
-        super().__init__(root_dir, modalities, 2, transform)
+        super().__init__(root_dir, modalities, 2, transform, enable_mem_monitor)
         self.selected_contrasts = selected_contrasts
         self.generated_contrasts = generated_contrasts
 
