@@ -116,8 +116,8 @@ class SupervisedTrainer(BaseTrainer):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with autocast(dtype=torch.bfloat16):
-            loss = self.model(x, selected_contrasts,
-                              generated_contrats, y)
+            loss, _ = self.model(x, selected_contrasts,
+                                 generated_contrats, y)
         scaler_loss = self.scaler.scale(loss)
         scaler_loss.backward()
         self.scaler.step(self.optimizer)
@@ -173,18 +173,19 @@ class GANTrainer(BaseTrainer):
         self.d_scaler = GradScaler()
 
     def _train_step(self, batch):
-        self.generator.eval()
         self.discriminator.train()
+        self.generator.train()
         x = batch['x'].to(distributed.device())
         y = batch['y'].to(distributed.device())
         self.d_optim.zero_grad()
 
-        fake = self.generator(x,
-                              batch['selected_contrasts'],
-                              batch['generated_contrasts'])
         real_label = torch.tensor(1.0).to(distributed.device())
         fake_label = torch.tensor(0.0).to(distributed.device())
         with autocast(dtype=torch.bfloat16):
+            g_per_loss, fake = self.generator(x,
+                                              batch['selected_contrasts'],
+                                              batch['generated_contrasts'],
+                                              y)
             real_loss = self.discriminator(
                 y, batch['generated_contrasts'], real_label)
             fake_loss = self.discriminator(
@@ -201,14 +202,7 @@ class GANTrainer(BaseTrainer):
         self.d_scaler.update()
 
         self.g_optim.zero_grad()
-        self.generator.train()
         with autocast(dtype=torch.bfloat16):
-            g_per_loss = self.generator(
-                x,
-                batch['selected_contrasts'],
-                batch['generated_contrasts'],
-                y
-            )
             g_against_loss = self.discriminator(
                 fake,
                 batch['generated_contrasts'],
