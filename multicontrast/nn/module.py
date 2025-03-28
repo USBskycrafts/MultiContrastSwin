@@ -1,4 +1,5 @@
 from .block import *
+import torchvision
 
 
 class EncoderDownLayer(nn.Module):
@@ -141,38 +142,39 @@ class Decoder(nn.Module):
 
 
 class NLayerDiscriminator(nn.Module):
-    """单尺度判别器（PatchGAN + 谱归一化）"""
+    """基于torchvision AlexNet的多尺度判别器（支持n_layers配置和ndf适配）"""
 
-    def __init__(self, input_nc=3, ndf=64, n_layers=3):
+    def __init__(self, input_nc=3, ndf=64, n_layers=3, pretrained=True):
         super().__init__()
-        layers = [
-            # 第一层不使用谱归一化（原始论文设计）
-            nn.Conv2d(input_nc, ndf, kernel_size=4, stride=2, padding=2),
-            nn.LeakyReLU(0.2, True)
-        ]
+        self.n_layers = min(max(n_layers, 1), 5)  # 限制1-5层
 
-        # 中间层：逐步增加通道数
-        nf_mult = 1
-        for n in range(1, n_layers):
-            nf_mult_prev = nf_mult
-            nf_mult = min(2**n, 8)
-            layers += [
-                SpectralNormConv2d(
-                    ndf * nf_mult_prev, ndf * nf_mult,
-                    kernel_size=4, stride=2, padding=2
-                )
-            ]
+        # 输入通道适配层
+        self.adapt_conv = spectral_norm(
+            nn.Conv2d(input_nc, 3, kernel_size=1, stride=1, padding=0)
+        )
 
-        # 最后一层：输出1通道的Patch判别结果
-        nf_mult_prev = nf_mult
-        layers += [
-            spectral_norm(
-                nn.Conv2d(ndf * nf_mult_prev, 1,
-                          kernel_size=4, stride=1, padding=2)
-            )
-        ]
+        # 加载torchvision的AlexNet
+        alexnet = torchvision.models.alexnet(pretrained=pretrained)
+        alexnet_features = list(alexnet.features.children())
 
-        self.model = nn.Sequential(*layers)
+        # 构建判别器模型(只取前n_layers*2-1个层，因为每层包含卷积和激活)
+        self.feature_layers = nn.ModuleList()
+        for i in range(min(self.n_layers*3-1, len(alexnet_features))):
+            layer = alexnet_features[i]
+            self.feature_layers.append(layer)
+
+        # 根据n_layers确定输出层输入通道数
+        dim_map = {1: 64, 2: 192, 3: 384, 4: 256, 5: 256}
+        output_dim = dim_map[self.n_layers]
+
+        # PatchGAN输出层
+        self.output_conv = spectral_norm(
+            nn.Conv2d(output_dim, 1, kernel_size=4, stride=1, padding=2)
+        )
 
     def forward(self, x):
-        return self.model(x)
+        x = self.adapt_conv(x)
+        for layer in self.feature_layers:
+            x = layer(x)
+        x = self.output_conv(x)
+        return x

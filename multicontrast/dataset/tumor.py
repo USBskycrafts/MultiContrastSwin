@@ -1,11 +1,11 @@
 import os
 from pathlib import Path
-from typing import OrderedDict
 
 import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from ignite import distributed as distributed
 
 
 class MultiModalMRIDataset(Dataset):
@@ -115,6 +115,7 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         super().__init__(root_dir, modalities, 2, transform, enable_mem_monitor)
         self.selected_contrasts = selected_contrasts
         self.generated_contrasts = generated_contrasts
+        self.crop = BatchMultiModalRandomErase()
 
     def collate_fn(self, x):
         # 将batch中的数据拼接成一个Tensor
@@ -123,8 +124,9 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         idx = [(item[1], item[2]) for item in x if item is not None]
         idx = torch.tensor(idx)
 
-        # crop to 192x160
-        batch = batch[:, :, 40:-40, -226:-34, :].rot90(k=1, dims=(2, 3))
+        # GPU上的crop和rotation
+        batch = batch[:, :, 40:-40, -226:-34, :]
+        batch = torch.rot90(batch, k=1, dims=[2, 3])
 
         num_contrasts = len(self.modalities)
 
@@ -143,9 +145,69 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
             generated_contrasts = self.generated_contrasts
 
         return {
-            'x': batch[:, selected_contrasts],
+            'x': self.crop(batch[:, selected_contrasts]) if
+            self.selected_contrasts is not None else batch[:, selected_contrasts],
             'y': batch[:, generated_contrasts],
             'selected_contrasts': selected_contrasts,
             'generated_contrasts': generated_contrasts,
             'idx': idx,
         }
+
+
+class BatchMultiModalRandomErase:
+    def __init__(self, p=0.5, min_area=0.02, max_area=0.4, aspect_ratio=(0.3, 3.3)):
+        self.p = p
+        self.min_area = min_area
+        self.max_area = max_area
+        self.aspect_ratio = aspect_ratio
+
+    def __call__(self, x):
+        """
+        输入形状：BxMxHxWx1
+        输出形状：BxMxHxWx1（部分区域被随机遮挡）
+        向量化优化版本
+        """
+        B, M, H, W, _ = x.shape
+        device = x.device
+
+        # 1. 批量生成遮挡标志 (B, M)
+        mask_applied = torch.rand(B, M, device=device) < self.p
+
+        # 没有需要遮挡的直接返回
+        if not mask_applied.any():
+            return x
+
+        # 2. 批量生成随机参数 (仅计算需要遮挡的元素)
+        active_elements = int(mask_applied.sum().item())  # 确保转换为整数类型
+        area_proportions = torch.empty(active_elements, device=device).uniform_(
+            self.min_area, self.max_area)
+        aspects = torch.empty(active_elements, device=device).uniform_(
+            *self.aspect_ratio)
+
+        # 3. 向量化计算遮挡尺寸 (active_elements,)
+        mask_areas = area_proportions * H * W
+        mask_hs = (torch.sqrt(mask_areas * aspects) + 0.5).int()
+        mask_ws = (torch.sqrt(mask_areas / aspects) + 0.5).int()
+
+        # 4. 约束尺寸范围
+        mask_hs = torch.clamp(mask_hs, 1, H)
+        mask_ws = torch.clamp(mask_ws, 1, W)
+
+        # 5. 批量生成起始坐标
+        valid_mask = (mask_hs <= H) & (mask_ws <= W)
+        x_starts = torch.randint(
+            0, W - mask_ws[valid_mask] + 1, (valid_mask.sum(),), device=device)
+        y_starts = torch.randint(
+            0, H - mask_hs[valid_mask] + 1, (valid_mask.sum(),), device=device)
+
+        # 6. 创建批量索引
+        b_indices, m_indices = torch.nonzero(mask_applied, as_tuple=True)
+        b_indices = b_indices[valid_mask]
+        m_indices = m_indices[valid_mask]
+
+        # 7. 向量化应用遮挡
+        for b, m, x1, y1, h, w in zip(b_indices, m_indices, x_starts, y_starts, mask_hs[valid_mask], mask_ws[valid_mask]):
+            # 使用切片操作保持维度信息
+            x[b, m, y1:y1+h, x1:x1+w, :] = 0
+
+        return x
