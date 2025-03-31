@@ -49,7 +49,7 @@ class MultiContrastDiscrimination(BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.model = MultiScaleDiscriminator(
-            input_nc=1, ndf=64, n_layers=3, num_scales=3)
+            input_nc=1, ndf=64, n_layers=3, num_scales=5)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     def _reshape_input(self, x):

@@ -46,10 +46,14 @@ class MultiContrastSwinTransformer(nn.Module):
 
         seeds = self.contrasts_seed[:, selected_contrats[1], :]
         seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
-        decoded_features = self.decoder(
-            seeds, encoded_features, selected_contrats)
-        y = self.image_decoding(decoded_features, selected_contrats[1])
-        return y
+        seeds = seeds + torch.rand_like(seeds)
+        outputs = []
+        for i in range(sample_times):
+            decoded_features = self.decoder(
+                seeds, encoded_features, selected_contrats)
+            y = self.image_decoding(decoded_features, selected_contrats[1])
+            outputs.append(y)
+        return torch.mean(torch.stack(outputs), dim=0)
 
 
 class MultiContrastDiscriminator(nn.Module):

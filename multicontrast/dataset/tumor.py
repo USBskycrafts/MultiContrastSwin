@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from collections import OrderedDict
 
 import nibabel as nib
 import numpy as np
@@ -10,7 +11,8 @@ from ignite import distributed as distributed
 
 class MultiModalMRIDataset(Dataset):
     def __init__(self, root_dir, modalities, slice_axis=2,
-                 transform=None, enable_mem_monitor=False):
+                 transform=None, enable_mem_monitor=False,
+                 max_cache_size=32):
         """
         参数:
             root_dir (str): 包含样本子目录的根目录
@@ -18,11 +20,14 @@ class MultiModalMRIDataset(Dataset):
             slice_axis (int): 切片轴向 (0:Sagittal, 1:Coronal, 2:Axial)
             transform (callable): 可选的图像增强变换
             enable_mem_monitor (bool): 是否启用内存监控
+            max_cache_size (int): 最大缓存样本数量
         """
         self.root_dir = root_dir
         self.modalities = modalities
         self.slice_axis = slice_axis
         self.transform = transform
+        self.max_cache_size = max_cache_size
+        self.cache = OrderedDict()
 
         # 收集有效样本路径
         self.sample_paths = [os.path.join(root_dir, d)
@@ -50,7 +55,12 @@ class MultiModalMRIDataset(Dataset):
         return len(self.sample_paths) * (self.max_slice - self.min_slice)
 
     def _load_volume(self, sample_path):
-        """并行加载单个样本的所有模态数据"""
+        """并行加载单个样本的所有模态数据，带缓存功能"""
+        # 检查缓存
+        if sample_path in self.cache:
+            self.cache.move_to_end(sample_path)  # 更新LRU顺序
+            return self.cache[sample_path].copy()
+
         volumes = []
         basename = os.path.basename(sample_path)
 
@@ -63,7 +73,14 @@ class MultiModalMRIDataset(Dataset):
             data = self._normalize(data)
             volumes.append(data)
 
-        return np.stack(volumes, axis=0)  # (M, H, W, D)
+        volume_data = np.stack(volumes, axis=0)  # (M, H, W, D)
+
+        # 更新缓存
+        if len(self.cache) >= self.max_cache_size:
+            self.cache.popitem(last=False)  # 淘汰最久未使用的
+        self.cache[sample_path] = volume_data
+
+        return volume_data.copy()
 
     def _normalize(self, volume):
         """批量归一化处理"""
@@ -110,9 +127,21 @@ class MultiModalMRIDataset(Dataset):
 
 class MultiModalGenerationDataset(MultiModalMRIDataset):
     def __init__(self, root_dir, modalities, transform=None, use_cache=True,
-                 selected_contrasts=None, generated_contrasts=None, enable_mem_monitor=False):
-        # using axis=2 to extract slices along the third dimension (depth)
-        super().__init__(root_dir, modalities, 2, transform, enable_mem_monitor)
+                 selected_contrasts=None, generated_contrasts=None, enable_mem_monitor=False,
+                 max_cache_size=32):
+        """
+        参数:
+            root_dir (str): 包含样本子目录的根目录
+            modalities (list): 模态名称列表 (对应文件名)
+            transform (callable): 可选的图像增强变换
+            use_cache (bool): 是否启用缓存
+            selected_contrasts (list): 预选对比度列表
+            generated_contrasts (list): 生成对比度列表
+            enable_mem_monitor (bool): 是否启用内存监控
+            max_cache_size (int): 最大缓存样本数量
+        """
+        super().__init__(root_dir, modalities, 2,
+                         transform, enable_mem_monitor, max_cache_size)
         self.selected_contrasts = selected_contrasts
         self.generated_contrasts = generated_contrasts
         self.crop = BatchMultiModalRandomErase()
@@ -146,7 +175,7 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
 
         return {
             'x': self.crop(batch[:, selected_contrasts]) if
-            self.selected_contrasts is not None else batch[:, selected_contrasts],
+            self.selected_contrasts is None else batch[:, selected_contrasts],
             'y': batch[:, generated_contrasts],
             'selected_contrasts': selected_contrasts,
             'generated_contrasts': generated_contrasts,
@@ -195,10 +224,14 @@ class BatchMultiModalRandomErase:
 
         # 5. 批量生成起始坐标
         valid_mask = (mask_hs <= H) & (mask_ws <= W)
-        x_starts = torch.randint(
-            0, W - mask_ws[valid_mask] + 1, (valid_mask.sum(),), device=device)
-        y_starts = torch.randint(
-            0, H - mask_hs[valid_mask] + 1, (valid_mask.sum(),), device=device)
+        x_starts = torch.stack([
+            torch.randint(0, (W - w + 1), (1,), device=device)[0]
+            for w in mask_ws[valid_mask]
+        ])
+        y_starts = torch.stack([
+            torch.randint(0, (H - h + 1), (1,), device=device)[0]
+            for h in mask_hs[valid_mask]
+        ])
 
         # 6. 创建批量索引
         b_indices, m_indices = torch.nonzero(mask_applied, as_tuple=True)

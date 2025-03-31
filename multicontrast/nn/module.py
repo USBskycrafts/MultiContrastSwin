@@ -149,9 +149,8 @@ class NLayerDiscriminator(nn.Module):
         self.n_layers = min(max(n_layers, 1), 5)  # 限制1-5层
 
         # 输入通道适配层
-        self.adapt_conv = spectral_norm(
-            nn.Conv2d(input_nc, 3, kernel_size=1, stride=1, padding=0)
-        )
+        self.adapt_conv = nn.Conv2d(
+            input_nc, 3, kernel_size=1, stride=1, padding=0)
 
         # 加载torchvision的AlexNet
         alexnet = torchvision.models.alexnet(pretrained=pretrained)
@@ -161,6 +160,7 @@ class NLayerDiscriminator(nn.Module):
         self.feature_layers = nn.ModuleList()
         for i in range(min(self.n_layers*3-1, len(alexnet_features))):
             layer = alexnet_features[i]
+            layer.requires_grad_(False)  # 冻结特征提取层
             self.feature_layers.append(layer)
 
         # 根据n_layers确定输出层输入通道数
@@ -168,8 +168,10 @@ class NLayerDiscriminator(nn.Module):
         output_dim = dim_map[self.n_layers]
 
         # PatchGAN输出层
-        self.output_conv = spectral_norm(
-            nn.Conv2d(output_dim, 1, kernel_size=4, stride=1, padding=2)
+        self.output_conv = nn.Sequential(
+            nn.Conv2d(output_dim, 32, kernel_size=4, stride=1, padding=2),
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(32, 1, 1, 1, 0)
         )
 
     def forward(self, x):
