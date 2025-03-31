@@ -141,42 +141,49 @@ class Decoder(nn.Module):
         return x
 
 
-class NLayerDiscriminator(nn.Module):
-    """基于torchvision AlexNet的多尺度判别器（支持n_layers配置和ndf适配）"""
+class PixelDiscriminator(nn.Module):
+    """pix2pixHD标准70x70 PatchGAN判别器(多尺度适配版)"""
 
-    def __init__(self, input_nc=3, ndf=64, n_layers=3, pretrained=True):
+    def __init__(self, input_nc=1, ndf=64, n_layers=3):
         super().__init__()
-        self.n_layers = min(max(n_layers, 1), 5)  # 限制1-5层
+        kw = 4
+        padw = 1
 
-        # 输入通道适配层
-        self.adapt_conv = nn.Conv2d(
-            input_nc, 3, kernel_size=1, stride=1, padding=0)
+        # 输入适配层
+        self.input_adapt = nn.Conv2d(
+            input_nc, ndf, kernel_size=1, stride=1, padding=0)
 
-        # 加载torchvision的AlexNet
-        alexnet = torchvision.models.alexnet(pretrained=pretrained)
-        alexnet_features = list(alexnet.features.children())
+        # 主网络结构
+        sequence = [
+            nn.Conv2d(ndf, ndf, kernel_size=kw, stride=2, padding=padw),
+            nn.InstanceNorm2d(ndf),
+            nn.LeakyReLU(0.2, True)
+        ]
 
-        # 构建判别器模型(只取前n_layers*2-1个层，因为每层包含卷积和激活)
-        self.feature_layers = nn.ModuleList()
-        for i in range(min(self.n_layers*3-1, len(alexnet_features))):
-            layer = alexnet_features[i]
-            layer.requires_grad_(False)  # 冻结特征提取层
-            self.feature_layers.append(layer)
+        # 中间卷积层
+        nf_mult = 1
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2 ** n, 8)
+            sequence += [
+                nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult,
+                          kernel_size=kw, stride=2, padding=padw),
+                nn.InstanceNorm2d(ndf * nf_mult),
+                nn.LeakyReLU(0.2, True)
+            ]
 
-        # 根据n_layers确定输出层输入通道数
-        dim_map = {1: 64, 2: 192, 3: 384, 4: 256, 5: 256}
-        output_dim = dim_map[self.n_layers]
+        # 最后两层保持分辨率
+        nf_mult = min(2 ** (n_layers-1), 8)  # 保持与前一层相同通道数
+        sequence += [
+            nn.Conv2d(ndf * nf_mult, ndf * nf_mult,
+                      kernel_size=kw, stride=1, padding=padw),
+            nn.InstanceNorm2d(ndf * nf_mult),
+            nn.LeakyReLU(0.2, True),
+            nn.Conv2d(ndf * nf_mult, 1, kernel_size=1, stride=1)
+        ]
 
-        # PatchGAN输出层
-        self.output_conv = nn.Sequential(
-            nn.Conv2d(output_dim, 32, kernel_size=4, stride=1, padding=2),
-            nn.LeakyReLU(inplace=True),
-            nn.Conv2d(32, 1, 1, 1, 0)
-        )
+        self.model = nn.Sequential(*sequence)
 
     def forward(self, x):
-        x = self.adapt_conv(x)
-        for layer in self.feature_layers:
-            x = layer(x)
-        x = self.output_conv(x)
-        return x
+        x = self.input_adapt(x)
+        return self.model(x)

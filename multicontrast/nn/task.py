@@ -32,14 +32,18 @@ class MultiModalityGeneration(BaseModel):
         super().__init__()
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.l1_loss = L1Loss()
+        self.percep_loss = CustomLPIPS()
+        self.l1_weight = 10.0  # 初始权重
+        self.decay_rate = 0.1  # 衰减率
+
+    def update_l1_weight(self):
+        """在每个epoch结束时调用，衰减L1权重"""
+        self.l1_weight = max(1.0, self.l1_weight - self.decay_rate)
 
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(
             x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
-        # recon = self.model(
-        #     x, [selected_contrasts, selected_contrasts], sample_times=sample_times)
-        # * lambdas[1] + self.loss_fn(recon, x) * lambdas[0]
-        return self.l1_loss(pred, y), pred
+        return self.l1_loss(pred, y) * self.l1_weight + self.percep_loss(pred, y).mean(), pred
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
         return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
@@ -49,7 +53,7 @@ class MultiContrastDiscrimination(BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.model = MultiScaleDiscriminator(
-            input_nc=1, ndf=64, n_layers=3, num_scales=5)
+            input_nc=1, ndf=64, n_layers=3, num_scales=3)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     def _reshape_input(self, x):

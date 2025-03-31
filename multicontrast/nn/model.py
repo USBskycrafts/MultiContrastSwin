@@ -1,4 +1,5 @@
 from .module import *
+import torch.nn.functional as F
 
 
 class MultiContrastSwinTransformer(nn.Module):
@@ -23,7 +24,11 @@ class MultiContrastSwinTransformer(nn.Module):
         self.decoder = Decoder(dim, num_layers, window_size,
                                shift_size, num_contrasts, num_heads, patch_size)
 
-        self.contrasts_seed = nn.Parameter(
+        self.contrasts_mean = nn.Parameter(
+            torch.randn(1, num_contrasts, 1, 1, dim *
+                        (1 << (num_layers - 1)) * patch_size ** 4)
+        )
+        self.contrasts_logvar = nn.Parameter(
             torch.randn(1, num_contrasts, 1, 1, dim *
                         (1 << (num_layers - 1)) * patch_size ** 4)
         )
@@ -44,9 +49,12 @@ class MultiContrastSwinTransformer(nn.Module):
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
 
-        seeds = self.contrasts_seed[:, selected_contrats[1], :]
-        seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
-        seeds = seeds + torch.rand_like(seeds)
+        logvar = self.contrasts_logvar[:, selected_contrats[1], :]
+        logvar = logvar.expand(B, -1, H, W, -1)  # 减少内存复制
+        mean = self.contrasts_mean[:, selected_contrats[1], :]
+        mean = mean.expand(B, -1, H, W, -1)  # 减少内存复制
+        seeds = torch.randn(B, len(selected_contrats[1]), H, W, C, device=x.device) \
+            * torch.exp(logvar / 2) + mean
         outputs = []
         for i in range(sample_times):
             decoded_features = self.decoder(
@@ -93,17 +101,23 @@ class MultiContrastDiscriminator(nn.Module):
 
 
 class MultiScaleDiscriminator(nn.Module):
-    def __init__(self, input_nc=3, ndf=64, n_layers=3, num_scales=3):
+    def __init__(self, input_nc=1, ndf=64, n_layers=3, num_scales=3):
         super().__init__()
         self.num_scales = num_scales
         self.discriminators = nn.ModuleList()
 
-        for scales in range(1, num_scales + 1):
-            netD = NLayerDiscriminator(input_nc, ndf, scales)
+        # 创建多尺度判别器（原始、1/2、1/4分辨率）
+        for _ in range(num_scales):
+            netD = PixelDiscriminator(input_nc, ndf, n_layers)
             self.discriminators.append(netD)
 
     def forward(self, x):
         outputs = []
-        for scale, netD in enumerate(self.discriminators):
-            outputs.append(netD(x))
-        return outputs  # 返回各尺度判别结果
+        # 生成多尺度输入
+        input_downsampled = x
+        for netD in self.discriminators:
+            outputs.append(netD(input_downsampled))
+            # 下采样到下一个尺度
+            input_downsampled = F.interpolate(
+                input_downsampled, scale_factor=0.5, mode='bilinear')
+        return outputs

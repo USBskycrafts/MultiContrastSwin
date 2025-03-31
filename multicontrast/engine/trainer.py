@@ -172,6 +172,12 @@ class GANTrainer(BaseTrainer):
         self.g_scaler = GradScaler()
         self.d_scaler = GradScaler()
 
+        # 添加epoch结束事件处理器
+        self.engine.add_event_handler(
+            Events.EPOCH_COMPLETED,
+            lambda engine: self.generator.update_l1_weight()
+        )
+
     def _train_step(self, batch):
         self.discriminator.train()
         self.generator.train()
