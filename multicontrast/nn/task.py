@@ -37,7 +37,7 @@ class MultiModalityGeneration(BaseModel):
         self.l1_loss = L1Loss()
         self.percep_loss = CustomLPIPS()
         self.l1_weight = 10.0  # 初始权重
-        self.decay_rate = 2e-5  # 衰减率
+        self.decay_rate = 2e-4  # 衰减率
 
         self.register_full_backward_hook(lambda *_: self.update_l1_weight())
         self.logger = setup_logger(__name__, stream=sys.stdout)
