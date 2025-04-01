@@ -1,11 +1,14 @@
+import sys
 from abc import abstractmethod
 from typing import List
 
 import torch
 import torch.nn as nn
+from ignite.utils import setup_logger
 
-from multicontrast.nn.model import MultiContrastSwinTransformer, MultiScaleDiscriminator
 from multicontrast.nn.loss import CustomLPIPS, L1Loss
+from multicontrast.nn.model import (MultiContrastSwinTransformer,
+                                    MultiScaleDiscriminator)
 
 
 class BaseModel(nn.Module):
@@ -34,11 +37,15 @@ class MultiModalityGeneration(BaseModel):
         self.l1_loss = L1Loss()
         self.percep_loss = CustomLPIPS()
         self.l1_weight = 10.0  # 初始权重
-        self.decay_rate = 0.1  # 衰减率
+        self.decay_rate = 2e-5  # 衰减率
+
+        self.register_full_backward_hook(lambda *_: self.update_l1_weight())
+        self.logger = setup_logger(__name__, stream=sys.stdout)
 
     def update_l1_weight(self):
         """在每个epoch结束时调用，衰减L1权重"""
         self.l1_weight = max(1.0, self.l1_weight - self.decay_rate)
+        self.logger.info(f'----- L1 Weight: {self.l1_weight}')
 
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
         pred = self.model(
