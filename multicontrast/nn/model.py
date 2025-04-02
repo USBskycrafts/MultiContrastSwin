@@ -24,11 +24,7 @@ class MultiContrastSwinTransformer(nn.Module):
         self.decoder = Decoder(dim, num_layers, window_size,
                                shift_size, num_contrasts, num_heads, patch_size)
 
-        self.contrasts_mean = nn.Parameter(
-            torch.randn(1, num_contrasts, 1, 1, dim *
-                        (1 << (num_layers - 1)) * patch_size ** 4)
-        )
-        self.contrasts_logvar = nn.Parameter(
+        self.contrasts_seeds = nn.Parameter(
             torch.randn(1, num_contrasts, 1, 1, dim *
                         (1 << (num_layers - 1)) * patch_size ** 4)
         )
@@ -49,19 +45,12 @@ class MultiContrastSwinTransformer(nn.Module):
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
 
-        logvar = self.contrasts_logvar[:, selected_contrats[1], :]
-        logvar = logvar.expand(B, -1, H, W, -1)  # 减少内存复制
-        mean = self.contrasts_mean[:, selected_contrats[1], :]
-        mean = mean.expand(B, -1, H, W, -1)  # 减少内存复制
-        seeds = torch.randn(B, len(selected_contrats[1]), H, W, C, device=x.device) \
-            * torch.exp(logvar / 2) + mean
-        outputs = []
-        for i in range(sample_times):
-            decoded_features = self.decoder(
-                seeds, encoded_features, selected_contrats)
-            y = self.image_decoding(decoded_features, selected_contrats[1])
-            outputs.append(y)
-        return torch.mean(torch.stack(outputs), dim=0)
+        seeds = self.contrasts_seeds[:, selected_contrats[1], :]
+        seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
+        decoded_features = self.decoder(
+            seeds, encoded_features, selected_contrats)
+        y = self.image_decoding(decoded_features, selected_contrats[1])
+        return y
 
 
 class MultiContrastDiscriminator(nn.Module):
