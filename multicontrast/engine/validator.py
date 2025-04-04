@@ -57,7 +57,7 @@ class SupervisedValidator(BaseValidator):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():
-            with autocast(dtype=torch.bfloat16):
+            with autocast():
                 pred = self.model(x,
                                   selected_contrasts,
                                   generated_contrats,
