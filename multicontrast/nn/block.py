@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
 from .utils import *
@@ -20,7 +21,8 @@ class WindowAttention(nn.Module):
         self.num_contrasts = num_contrasts
         self.num_resources = num_resouces
 
-        self.scale = self.head_dim ** -0.5
+        self.scale = torch.rsqrt(torch.tensor(
+            self.head_dim, dtype=torch.float32))
 
         self.q_proj = nn.Linear(dim, dim)
         self.k_proj = nn.Linear(dim, dim)
@@ -77,7 +79,7 @@ class WindowAttention(nn.Module):
             self.scale + relative_bias
         if mask is not None:
             attn = attn + mask
-        attn = attn.softmax(dim=-1)
+        attn = F.softmax(attn, dim=-1)
         attn = self.attn_drop(attn)
         x = torch.matmul(attn, v)
 
