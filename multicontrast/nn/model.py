@@ -25,7 +25,7 @@ class MultiContrastSwinTransformer(nn.Module):
                                shift_size, num_contrasts, num_heads, patch_size)
 
         self.contrasts_seeds = nn.Parameter(
-            torch.randn(2, 1, num_contrasts, 1, 1, dim *
+            torch.randn(1, num_contrasts, 1, 1, dim *
                         (1 << (num_layers - 1)) * patch_size ** 4)
         )
 
@@ -45,13 +45,10 @@ class MultiContrastSwinTransformer(nn.Module):
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
 
-        seeds = self.contrasts_seeds[:, :, selected_contrats[1], :]
-        mean, logvar = seeds
-        mean = mean.expand(B, -1, H, W, -1)  # 减少内存复制
-        logvar = logvar.expand(B, -1, H, W, -1)  # 减少内存复制
-        latent = torch.rand_like(mean) * torch.exp(0.5 * logvar) + mean
+        seeds = self.contrasts_seeds[:, selected_contrats[1], :]
+        seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
         decoded_features = self.decoder(
-            latent, encoded_features, selected_contrats)
+            seeds, encoded_features, selected_contrats)
         y = self.image_decoding(decoded_features, selected_contrats[1])
         return y
 
