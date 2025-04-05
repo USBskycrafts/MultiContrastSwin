@@ -42,6 +42,7 @@ class MultiContrastSwinTransformer(nn.Module):
 
     def forward(self, x, selected_contrats, sample_times=1):
         x = self.image_encoding(x, selected_contrats[0])
+        elbo = self.elbo(x)
         encoded_features = self.encoder(x, selected_contrats[0])
         B, M, H, W, C = encoded_features[0].shape
 
@@ -50,7 +51,11 @@ class MultiContrastSwinTransformer(nn.Module):
         decoded_features = self.decoder(
             seeds, encoded_features, selected_contrats)
         y = self.image_decoding(decoded_features, selected_contrats[1])
-        return y
+        return y, elbo
+
+    def elbo(self, x):
+        mean, logvar = torch.chunk(x, 2, dim=-1)
+        return -0.5 * torch.sum(1 + logvar - mean.pow(2) - logvar.exp(), dim=-1).mean()
 
 
 class MultiContrastDiscriminator(nn.Module):

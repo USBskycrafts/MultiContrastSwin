@@ -341,50 +341,64 @@ class PatchExpansion(nn.Module):
 class ImageEncoding(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
+        base_dim = 64
 
         self.inc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.Conv2d(in_channels, base_dim, 7, 1, 3),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, out_channels),
+            nn.GroupNorm(32, base_dim),
         )
 
         self.convs = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.Conv2d(base_dim, base_dim * 2, 5, 2, 2),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, out_channels),
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.GroupNorm(32, base_dim * 2),
+            nn.Conv2d(base_dim * 2, base_dim * 4, 5, 2, 2),
+            nn.SiLU(inplace=True),
+            nn.GroupNorm(32, base_dim * 4),
         )
+
+        self.out_conv = nn.Conv2d(base_dim * 4, out_channels, 1, 1, 0)
 
     def forward(self, x):
         # x: [B, M, H, W, C]
         B, M, H, W, C = x.size()
         x = x.permute(0, 1, 4, 2, 3).view(-1, C, H, W).contiguous()
         x = self.inc(x)
-        x = x + self.convs(x)
-        return x.view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
+        x = self.convs(x)
+        x = self.out_conv(x)
+        return x.view(B, M, -1, H // 4, W // 4).permute(0, 1, 3, 4, 2).contiguous()
 
 
 class ImageDecoding(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
+        base_dim = 64
+
+        self.in_conv = nn.Conv2d(in_channels, base_dim * 4, 1, 1, 0)
 
         self.convs = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(base_dim * 4, base_dim * 2, 5, 1, 2),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, in_channels),
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.GroupNorm(32, base_dim * 2),
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(base_dim * 2, base_dim, 5, 1, 2),
+            nn.SiLU(inplace=True),
+            nn.GroupNorm(32, base_dim),
         )
 
         self.outc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.Conv2d(base_dim, out_channels, 7, 1, 3),
             nn.Tanh()
         )
 
     def forward(self, x):
         B, M, H, W, C = x.size()
         x = x.permute(0, 1, 4, 2, 3).contiguous().view(-1, C, H, W)
-        x = self.convs(x) + x
-        return self.outc(x).view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
+        x = self.in_conv(x)
+        x = self.convs(x)
+        return self.outc(x).view(B, M, -1, H * 4, W * 4).permute(0, 1, 3, 4, 2).contiguous()
 
 
 class MultiContrastImageEncoding(nn.Module):
