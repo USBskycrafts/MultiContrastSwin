@@ -90,8 +90,9 @@ class MultiModalMRIDataset(Dataset):
         # volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
         # return np.clip(volume, -1, 1)
         mean = np.mean(volume)
+        volume = (volume - mean)
         peak = np.max(np.abs(volume))
-        volume = (volume - mean) / peak
+        volume = volume / peak
         return volume
 
     def __getitem__(self, idx):
