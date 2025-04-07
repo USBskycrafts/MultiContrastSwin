@@ -75,13 +75,18 @@ class WindowAttention(nn.Module):
 
         q, k, v = map(lambda x: multihead_shuffle(
             x, self.num_heads), (q, k, v))
-        attn = torch.matmul(q, k.transpose(-2, -1)) * \
-            self.scale + relative_bias
-        if mask is not None:
-            attn = attn + mask
-        attn = F.softmax(attn, dim=-1)
-        attn = self.attn_drop(attn)
-        x = torch.matmul(attn, v)
+        # attn = torch.matmul(q, k.transpose(-2, -1)) * \
+        #     self.scale + relative_bias
+        # if mask is not None:
+        #     attn = attn + mask
+        # attn = F.softmax(attn, dim=-1)
+        # attn = self.attn_drop(attn)
+        # x = torch.matmul(attn, v)
+        x = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=relative_bias +
+            (mask if mask is not None else 0),
+            dropout_p=0.1 if self.attn_drop else 0.0,
+        )
 
         x = multihead_unshuffle(x, self.num_heads)
         x = window_reverse(x, self.window_size, M, H, W)

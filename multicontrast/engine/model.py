@@ -86,7 +86,7 @@ class MultiContrastGeneration(Model):
         scheduler = create_lr_scheduler_with_warmup(
             scheduler,
             warmup_start_value=0.0,
-            warmup_duration=200,
+            warmup_duration=1000,
             warmup_end_value=self.learning_rate,
         )
         self.trainer.register_events(Events.ITERATION_STARTED, scheduler)
@@ -219,7 +219,7 @@ class MultiContrastGANGeneration(Model):
         g_sche = create_lr_scheduler_with_warmup(
             g_sche,
             warmup_start_value=0.0,
-            warmup_duration=200,
+            warmup_duration=1000,
             warmup_end_value=self.g_lr,
         )
         self.trainer.register_events(Events.ITERATION_STARTED, g_sche)
@@ -230,7 +230,7 @@ class MultiContrastGANGeneration(Model):
         d_sche = create_lr_scheduler_with_warmup(
             d_sche,
             warmup_start_value=0.0,
-            warmup_duration=200,
+            warmup_duration=1000,
             warmup_end_value=self.g_lr,
         )
         self.trainer.register_events(Events.ITERATION_STARTED, d_sche)

@@ -1,12 +1,12 @@
 import os
-from pathlib import Path
 from collections import OrderedDict
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
 import torch
+import torch.distributed
 from torch.utils.data import Dataset
-from ignite import distributed as distributed
 
 
 class MultiModalMRIDataset(Dataset):
@@ -20,14 +20,12 @@ class MultiModalMRIDataset(Dataset):
             slice_axis (int): 切片轴向 (0:Sagittal, 1:Coronal, 2:Axial)
             transform (callable): 可选的图像增强变换
             enable_mem_monitor (bool): 是否启用内存监控
-            max_cache_size (int): 最大缓存样本数量
+            max_cache_size (int): 保留参数（兼容旧配置）
         """
         self.root_dir = root_dir
         self.modalities = modalities
         self.slice_axis = slice_axis
         self.transform = transform
-        self.max_cache_size = max_cache_size
-        self.cache = OrderedDict()
 
         # 收集有效样本路径
         self.sample_paths = [os.path.join(root_dir, d)
@@ -35,10 +33,25 @@ class MultiModalMRIDataset(Dataset):
                              if os.path.isdir(os.path.join(root_dir, d))]
 
         # DDP环境下共享文件列表
-        if torch.distributed.is_initialized():
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
             world_size = torch.distributed.get_world_size()
-            self.sample_paths = self.sample_paths[torch.distributed.get_rank(
-            )::world_size]
+            rank = torch.distributed.get_rank()
+            self.sample_paths = self.sample_paths[rank::world_size]
+
+        # 多线程预加载所有数据
+        from concurrent.futures import ThreadPoolExecutor
+        self.data = {}
+        with ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(self._load_volume, path): path
+                for path in self.sample_paths
+            }
+            for future in futures:
+                path = futures[future]
+                try:
+                    self.data[path] = future.result()
+                except Exception as e:
+                    print(f"Error loading {path}: {str(e)}")
 
         # 动态切片参数
         self.min_slice = 27
@@ -55,12 +68,7 @@ class MultiModalMRIDataset(Dataset):
         return len(self.sample_paths) * (self.max_slice - self.min_slice)
 
     def _load_volume(self, sample_path):
-        """并行加载单个样本的所有模态数据，带缓存功能"""
-        # 检查缓存
-        if sample_path in self.cache:
-            self.cache.move_to_end(sample_path)  # 更新LRU顺序
-            return self.cache[sample_path].copy()
-
+        """加载单个样本的所有模态数据"""
         volumes = []
         basename = os.path.basename(sample_path)
 
@@ -73,21 +81,18 @@ class MultiModalMRIDataset(Dataset):
             data = self._normalize(data)
             volumes.append(data)
 
-        volume_data = np.stack(volumes, axis=0)  # (M, H, W, D)
-
-        # 更新缓存
-        if len(self.cache) >= self.max_cache_size:
-            self.cache.popitem(last=False)  # 淘汰最久未使用的
-        self.cache[sample_path] = volume_data
-
-        return volume_data.copy()
+        return np.stack(volumes, axis=0)  # (M, H, W, D)
 
     def _normalize(self, volume):
         """批量归一化处理"""
-        vmin = np.min(volume)
-        vmax = np.max(volume)
-        volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
-        return np.clip(volume, -1, 1)
+        # vmin = np.min(volume)
+        # vmax = np.max(volume)
+        # volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
+        # return np.clip(volume, -1, 1)
+        mean = np.mean(volume)
+        peak = np.max(np.abs(volume))
+        volume = (volume - mean) / peak
+        return volume
 
     def __getitem__(self, idx):
         # 动态计算样本索引和切片索引
@@ -105,8 +110,8 @@ class MultiModalMRIDataset(Dataset):
             ) / (self.mem_stats['count'] + 1)
             self.mem_stats['count'] += 1
 
-        # 内存映射加载单样本数据
-        volume = self._load_volume(sample_path)
+        # 获取预加载的数据
+        volume = self.data[sample_path]
 
         # 提取切片数据
         if self.slice_axis == 0:
