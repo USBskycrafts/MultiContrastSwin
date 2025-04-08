@@ -85,15 +85,10 @@ class MultiModalMRIDataset(Dataset):
 
     def _normalize(self, volume):
         """批量归一化处理"""
-        # vmin = np.min(volume)
-        # vmax = np.max(volume)
-        # volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
-        # return np.clip(volume, -1, 1)
-        mean = np.mean(volume)
-        volume = (volume - mean)
-        peak = np.max(np.abs(volume))
-        volume = volume / peak
-        return volume
+        vmin = np.percentile(volume, 0.1)
+        vmax = np.percentile(volume, 99.9)
+        volume = (volume - vmin) / (vmax - vmin) * 2 - 1 if vmax != 0 else -1
+        return np.clip(volume, -1, 1)
 
     def __getitem__(self, idx):
         # 动态计算样本索引和切片索引

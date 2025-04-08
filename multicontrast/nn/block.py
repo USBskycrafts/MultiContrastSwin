@@ -348,16 +348,16 @@ class ImageEncoding(nn.Module):
         super().__init__()
 
         self.inc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, out_channels),
         )
 
         self.convs = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, out_channels),
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
         )
 
     def forward(self, x):
@@ -374,14 +374,14 @@ class ImageDecoding(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, in_channels),
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
         )
 
         self.outc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
             nn.Tanh()
         )
 
