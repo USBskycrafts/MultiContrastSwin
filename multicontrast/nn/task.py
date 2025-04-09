@@ -69,7 +69,7 @@ class MultiContrastDiscrimination(BaseModel):
         super().__init__()
         self.model = MultiScaleDiscriminator(
             input_nc=1, ndf=64, n_layers=3, num_scales=3)
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.loss_fn = nn.MSELoss(reduction='mean')
 
     def _reshape_input(self, x):
         # x: (B, M, H, W, C)
@@ -81,15 +81,13 @@ class MultiContrastDiscrimination(BaseModel):
     def loss(self, x, generated_contrasts, label):
         x = self._reshape_input(x)  # (B*M, C, H, W)
         preds = self.model(x)
-        loss = 0
-        for pred in preds:
-            if label.item() == 1:
-                loss += self.loss_fn(pred, torch.ones_like(pred))
-            elif label.item() == 0:
-                loss += self.loss_fn(pred, torch.zeros_like(pred))
-            else:
-                raise ValueError("Label must be 0 or 1")
-        return loss / len(preds)
+        # label: tensor(1.0) or tensor(0.0)
+        # Flatten predictions for loss calculation
+        preds = [pred.flatten() for pred in preds]
+        # Concatenate predictions for loss calculation
+        preds = torch.cat(preds, dim=0)
+        loss = self.loss_fn(preds, label)  # Calculate loss
+        return loss
 
     def predict(self, x, generated_contrasts):
         x = self._reshape_input(x)  # (B*M, C, H, W)

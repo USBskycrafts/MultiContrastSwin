@@ -75,18 +75,18 @@ class WindowAttention(nn.Module):
 
         q, k, v = map(lambda x: multihead_shuffle(
             x, self.num_heads), (q, k, v))
-        # attn = torch.matmul(q, k.transpose(-2, -1)) * \
-        #     self.scale + relative_bias
-        # if mask is not None:
-        #     attn = attn + mask
-        # attn = F.softmax(attn, dim=-1)
-        # attn = self.attn_drop(attn)
-        # x = torch.matmul(attn, v)
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=relative_bias +
-            (mask if mask is not None else 0),
-            dropout_p=0.1 if self.attn_drop else 0.0,
-        )
+        attn = torch.matmul(q, k.transpose(-2, -1)) * \
+            self.scale + relative_bias
+        if mask is not None:
+            attn = attn + mask
+        attn = F.softmax(attn, dim=-1)
+        attn = self.attn_drop(attn)
+        x = torch.matmul(attn, v)
+        # x = F.scaled_dot_product_attention(
+        #     q, k, v, attn_mask=relative_bias +
+        #     (mask if mask is not None else 0),
+        #     dropout_p=0.1 if self.attn_drop else 0.0,
+        # )
 
         x = multihead_unshuffle(x, self.num_heads)
         x = window_reverse(x, self.window_size, M, H, W)
@@ -348,16 +348,16 @@ class ImageEncoding(nn.Module):
         super().__init__()
 
         self.inc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
+            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, out_channels),
         )
 
         self.convs = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
+            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, out_channels),
-            nn.Conv2d(out_channels, out_channels, 3, 1, 1),
+            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
         )
 
     def forward(self, x):
@@ -374,14 +374,14 @@ class ImageDecoding(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
+            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, in_channels),
-            nn.Conv2d(in_channels, in_channels, 3, 1, 1),
+            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
         )
 
         self.outc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
+            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
             nn.Tanh()
         )
 

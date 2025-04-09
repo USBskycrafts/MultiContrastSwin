@@ -78,9 +78,15 @@ class MultiModalMRIDataset(Dataset):
             img = nib.nifti1.load(file_path)
             img = nib.funcs.as_closest_canonical(img)
             data = img.get_fdata(dtype=np.float32)
-            data = self._normalize(data)
+            if modality == 'seg':
+                data = np.where(data == 1.0, 1, -1)
+            else:
+                data = self._normalize(data)
             volumes.append(data)
-
+        assert len(volumes) == len(
+            self.modalities), f'{self.modalities}'  # 确保每个模态都有数据
+        # 确保所有模态的尺寸一致
+        assert volumes[0].shape == volumes[1].shape == volumes[2].shape == volumes[3].shape
         return np.stack(volumes, axis=0)  # (M, H, W, D)
 
     def _normalize(self, volume):
