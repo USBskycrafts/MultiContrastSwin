@@ -1,3 +1,4 @@
+from networkx import reverse
 from .module import *
 import torch.nn.functional as F
 
@@ -29,6 +30,12 @@ class MultiContrastSwinTransformer(nn.Module):
                         (1 << (num_layers - 1)) * patch_size ** 4)
         )
 
+        self.quantizers = nn.ModuleList([
+            VectorQuantizer(dim * (1 << i) * patch_size ** 4,
+                            dim * (1 << (num_layers - i - 1)), 1e-2)
+            for i in range(num_layers)
+        ])
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
@@ -47,6 +54,13 @@ class MultiContrastSwinTransformer(nn.Module):
 
         seeds = self.contrasts_seeds[:, selected_contrats[1], :]
         seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
+        quantized_features = []
+
+        for encoded_feature, qt in zip(encoded_features, reversed(self.quantizers)):
+            z_q = qt(encoded_feature)
+            quantized_features.append(z_q)
+
+        encoded_features = quantized_features
         decoded_features = self.decoder(
             seeds, encoded_features, selected_contrats)
         y = self.image_decoding(decoded_features, selected_contrats[1])

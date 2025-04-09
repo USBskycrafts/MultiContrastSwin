@@ -1,3 +1,4 @@
+import math
 from .block import *
 import torchvision
 
@@ -139,6 +140,34 @@ class Decoder(nn.Module):
         x = self.expands(x, encoded_features[-1], selected_contrats)
 
         return x
+
+
+class VectorQuantizer(nn.Module):
+    def __init__(self,  embedding_dim, num_embeddings, beta=0.25):
+        """
+        Soft Quantizer for VQ-VAE
+        Args:
+            num_embeddings: Number of codebook vectors (K)
+            embedding_dim: Dimension of each codebook vector (D)
+            temperature: Softmax temperature for controlling sharpness of weights
+        """
+        super(VectorQuantizer, self).__init__()
+        self.num_embeddings = torch.log2(torch.tensor(num_embeddings))
+
+    def forward(self, z):
+        """
+        Args:
+            z_e: Encoder output (B x D)
+        Returns:
+            z_q: Soft quantized latent (B x D)
+            weights: Softmax weights (B x K)
+        """
+        # Flatten z_e to (B x D)
+
+        z_q = torch.round((self.num_embeddings - 1) * F.tanh(z))
+        z_q = z + (z_q - z).detach()
+
+        return z_q
 
 
 class PixelDiscriminator(nn.Module):

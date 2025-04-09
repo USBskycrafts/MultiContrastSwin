@@ -36,7 +36,7 @@ class MultiModalityGeneration(BaseModel):
         self.model = MultiContrastSwinTransformer(*args, **kwargs)
         self.l1_loss = L1Loss()
         self.percep_loss = CustomLPIPS()
-        self.l1_weight = 10.0  # 初始权重
+        self.l1_weight = 1  # 初始权重
         self.decay_rate = 2e-4  # 衰减率
 
         self.register_full_backward_hook(lambda *_: self.update_l1_weight())
@@ -44,7 +44,7 @@ class MultiModalityGeneration(BaseModel):
 
     def update_l1_weight(self):
         """在每个epoch结束时调用，衰减L1权重"""
-        self.l1_weight = max(1.0, self.l1_weight - self.decay_rate)
+        # self.l1_weight = max(1.0, self.l1_weight - self.decay_rate)
         self.logger.info(f'''
                                L1 Weight: {self.l1_weight}
                                L1 Loss {self.l1_log} 
@@ -69,7 +69,7 @@ class MultiContrastDiscrimination(BaseModel):
         super().__init__()
         self.model = MultiScaleDiscriminator(
             input_nc=1, ndf=64, n_layers=3, num_scales=3)
-        self.loss_fn = nn.MSELoss(reduction='mean')
+        self.loss_fn = nn.BCEWithLogitsLoss()
 
     def _reshape_input(self, x):
         # x: (B, M, H, W, C)
@@ -86,6 +86,8 @@ class MultiContrastDiscrimination(BaseModel):
         preds = [pred.flatten() for pred in preds]
         # Concatenate predictions for loss calculation
         preds = torch.cat(preds, dim=0)
+        # Expand label to match predictions shape
+        label = label.expand_as(preds)
         loss = self.loss_fn(preds, label)  # Calculate loss
         return loss
 
