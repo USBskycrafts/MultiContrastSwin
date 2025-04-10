@@ -143,7 +143,7 @@ class Decoder(nn.Module):
 
 
 class VectorQuantizer(nn.Module):
-    def __init__(self,  embedding_dim, num_embeddings, beta=0.25):
+    def __init__(self, num_embeddings):
         """
         Soft Quantizer for VQ-VAE
         Args:

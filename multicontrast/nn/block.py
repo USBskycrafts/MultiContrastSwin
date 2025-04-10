@@ -378,6 +378,8 @@ class ImageDecoding(nn.Module):
             nn.SiLU(inplace=True),
             nn.GroupNorm(4, in_channels),
             nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.SiLU(inplace=True),
+            nn.GroupNorm(4, in_channels),
         )
 
         self.outc = nn.Sequential(

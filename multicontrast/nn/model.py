@@ -31,8 +31,7 @@ class MultiContrastSwinTransformer(nn.Module):
         )
 
         self.quantizers = nn.ModuleList([
-            VectorQuantizer(dim * (1 << i) * patch_size ** 4,
-                            dim * (1 << (num_layers - i - 1)), 1e-2)
+            VectorQuantizer(2048)
             for i in range(num_layers)
         ])
 

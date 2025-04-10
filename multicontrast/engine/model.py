@@ -68,7 +68,7 @@ class MultiContrastGeneration(Model):
         self.model = MultiModalityGeneration(**model_config)
         self.model = auto_model(self.model, find_unused_parameters=True)
         self.learning_rate = config.getfloat('train', 'learning_rate')
-        self.optimizer = torch.optim.AdamW(self.model.parameters(),
+        self.optimizer = torch.optim.RAdam(self.model.parameters(),
                                            lr=self.learning_rate)
         self.optimizer = auto_optim(self.optimizer)
         self.training_dataset = MultiModalGenerationDataset(
@@ -214,24 +214,22 @@ class MultiContrastGANGeneration(Model):
                                   self.g_optim,
                                   self.d_optim)
         g_sche = CosineAnnealingScheduler(self.g_optim, "lr",
-                                          self.g_lr, 0, 2000,
-                                          cycle_mult=1.1)
+                                          self.g_lr, 0, 2000)
         g_sche = create_lr_scheduler_with_warmup(
             g_sche,
             warmup_start_value=0.0,
-            warmup_duration=1000,
+            warmup_duration=5000,
             warmup_end_value=self.g_lr,
         )
         self.trainer.register_events(Events.ITERATION_STARTED, g_sche)
         # --------------------------------------------------------------------
         d_sche = CosineAnnealingScheduler(self.d_optim, "lr",
-                                          self.d_lr, 0, 2000,
-                                          cycle_mult=1.1)
+                                          self.d_lr, 0, 2000)
         d_sche = create_lr_scheduler_with_warmup(
             d_sche,
             warmup_start_value=0.0,
-            warmup_duration=1000,
-            warmup_end_value=self.g_lr,
+            warmup_duration=5000,
+            warmup_end_value=self.d_lr,
         )
         self.trainer.register_events(Events.ITERATION_STARTED, d_sche)
 

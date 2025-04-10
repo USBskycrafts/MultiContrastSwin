@@ -168,14 +168,14 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         if self.selected_contrasts is None:
             selected_contrasts = np.random.choice(
                 num_contrasts, np.random.randint(1, num_contrasts), replace=False)
-            selected_contrasts = sorted(selected_contrasts)
+            # selected_contrasts = sorted(selected_contrasts)
         else:
             selected_contrasts = self.selected_contrasts
 
         if self.generated_contrasts is None:
             generated_contrasts = np.random.choice(
-                num_contrasts, np.random.randint(1, num_contrasts), replace=False)
-            generated_contrasts = sorted(generated_contrasts)
+                num_contrasts, np.random.randint(1, num_contrasts + 1), replace=False)
+            # generated_contrasts = sorted(generated_contrasts)
         else:
             generated_contrasts = self.generated_contrasts
 
