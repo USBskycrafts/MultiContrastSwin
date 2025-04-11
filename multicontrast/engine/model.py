@@ -66,7 +66,7 @@ class MultiContrastGeneration(Model):
             "num_heads": config.getint('model', 'num_heads')
         }
         self.model = MultiModalityGeneration(**model_config)
-        self.model = auto_model(self.model, find_unused_parameters=True)
+        self.model = auto_model(self.model, find_unused_parameters=False)
         self.learning_rate = config.getfloat('train', 'learning_rate')
         self.optimizer = torch.optim.RAdam(self.model.parameters(),
                                            lr=self.learning_rate)
@@ -189,7 +189,7 @@ class MultiContrastGANGeneration(Model):
         }
         self.generator = MultiModalityGeneration(**model_config)
         self.generator = auto_model(
-            self.generator, find_unused_parameters=True)
+            self.generator, find_unused_parameters=False)
         self.g_lr = config.getfloat('train', 'g_lr')
         self.g_optim = torch.optim.AdamW(self.generator.parameters(),
                                          lr=self.g_lr)
@@ -197,7 +197,7 @@ class MultiContrastGANGeneration(Model):
         # ----------------------------------------------------------------------------
         self.discriminator = MultiContrastDiscrimination(**model_config)
         self.discriminator = auto_model(
-            self.discriminator, find_unused_parameters=True)
+            self.discriminator, find_unused_parameters=False)
         self.d_lr = config.getfloat('train', 'd_lr')
         self.d_optim = torch.optim.AdamW(self.discriminator.parameters(),
                                          self.d_lr)

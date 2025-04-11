@@ -218,7 +218,7 @@ class MultiContrastEncoderBlock(nn.Module):
         self.attn = WindowAttention(
             dim, window_size, num_contrasts, num_heads, 1)
         self.norm2 = nn.LayerNorm(dim)
-        self.mlp = MoELayer(dim, dim, num_contrasts)
+        self.mlp = MLP(dim, 4 * dim, dim)
 
     def forward(self, x, selected_contrasts):
         B, M, H, W, C = x.shape
@@ -257,7 +257,7 @@ class MultiContrastDecoderBlock(nn.Module):
         self.attn2 = WindowAttention(
             dim, window_size, num_contrasts, num_heads, 2)
         self.norm3 = nn.LayerNorm(dim)
-        self.mlp = MoELayer(dim, dim, num_contrasts)
+        self.mlp = MLP(dim, 4 * dim, dim)
 
     def forward(self, x, encoded_features, selected_contrasts):
         B, M, H, W, C = x.shape
