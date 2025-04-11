@@ -115,7 +115,7 @@ class SupervisedTrainer(BaseTrainer):
         y = batch['y'].to(distributed.device())
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
-        with autocast(dtype=torch.bfloat16):
+        with autocast(dtype=torch.float16):
             loss, _ = self.model(x, selected_contrasts,
                                  generated_contrats, y)
         scaler_loss = self.scaler.scale(loss)
@@ -152,7 +152,7 @@ class SupervisedTrainer(BaseTrainer):
         selected_contrasts = batch['selected_contrasts']
         generated_contrats = batch['generated_contrasts']
         with torch.no_grad():
-            with autocast(dtype=torch.bfloat16):
+            with autocast(dtype=torch.float16):
                 pred = self.model(x, selected_contrasts, generated_contrats)
         return pred, y
 
@@ -181,7 +181,7 @@ class GANTrainer(BaseTrainer):
 
         real_label = torch.tensor(1.0).to(distributed.device())
         fake_label = torch.tensor(0.0).to(distributed.device())
-        with autocast(dtype=torch.bfloat16):
+        with autocast(dtype=torch.float16):
             g_per_loss, fake = self.generator(x,
                                               batch['selected_contrasts'],
                                               batch['generated_contrasts'],
@@ -202,7 +202,7 @@ class GANTrainer(BaseTrainer):
         self.d_scaler.update()
 
         self.g_optim.zero_grad()
-        with autocast(dtype=torch.bfloat16):
+        with autocast(dtype=torch.float16):
             g_against_loss = self.discriminator(
                 fake,
                 batch['generated_contrasts'],
@@ -229,7 +229,7 @@ class GANTrainer(BaseTrainer):
         x = batch['x'].to(distributed.device())
         y = batch['y'].to(distributed.device())
         with torch.no_grad():
-            with autocast(dtype=torch.bfloat16):
+            with autocast(dtype=torch.float16):
                 fake = self.generator(
                     x,
                     batch['selected_contrasts'],
