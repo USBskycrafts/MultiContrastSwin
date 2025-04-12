@@ -130,7 +130,7 @@ class MoELayer(nn.Module):
         if not use_aux_loss:
             self.expert_biases = nn.Parameter(torch.zeros(num_experts))
 
-    def _update_expert_biases(self, top_k_indices, update_rate=1e-5):
+    def _update_expert_biases(self, top_k_indices, update_rate=1e-3):
         # 跨进程聚合专家选择
         expert_counts = torch.bincount(
             top_k_indices.flatten(), minlength=self.num_experts).to(self.expert_biases.device)
