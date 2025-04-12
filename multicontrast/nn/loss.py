@@ -41,7 +41,7 @@ class L1Loss(nn.Module):
         info_weight = gradient / (gradient.max() + 1e-10)  # 归一化到 [0,1]
 
         # 结合误差与信息量的权重
-        combined_weight = alpha * error_map + beta * info_weight
+        combined_weight = alpha + beta * info_weight
         combined_weight = combined_weight.detach()  # 阻止梯度传播到权重
 
         # 加权损失

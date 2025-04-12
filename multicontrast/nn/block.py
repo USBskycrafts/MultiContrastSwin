@@ -6,6 +6,7 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributed as dist
 from torch.nn.utils import spectral_norm
 
 from .utils import *
@@ -110,6 +111,9 @@ class MLP(nn.Module):
 
 class MoELayer(nn.Module):
     def __init__(self, input_size, output_size, num_contrasts, k=2, use_aux_loss=False):
+        if not dist.is_initialized():
+            raise RuntimeError(
+                "MoELayer requires torch.distributed to be initialized first")
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size
@@ -126,11 +130,18 @@ class MoELayer(nn.Module):
         if not use_aux_loss:
             self.expert_biases = nn.Parameter(torch.zeros(num_experts))
 
-    def _update_expert_biases(self, update_rate=1e-5):
-        # 展平所有位置的专家选择
+    def _update_expert_biases(self, top_k_indices, update_rate=1e-5):
+        # 跨进程聚合专家选择
         expert_counts = torch.bincount(
-            self.top_k_indices.flatten(), minlength=self.num_experts)
-        avg_count = expert_counts.float().mean()
+            top_k_indices.flatten(), minlength=self.num_experts).to(self.expert_biases.device)
+
+        # 全局聚合统计
+        dist.all_reduce(expert_counts, op=dist.ReduceOp.SUM)
+
+        # 计算进程平均
+        avg_count = expert_counts.float().mean() / dist.get_world_size()
+
+        # 同步更新参数
         for i in range(self.num_experts):
             error = avg_count - expert_counts[i].float()
             self.expert_biases.data[i] += update_rate * torch.sign(error)
@@ -196,11 +207,9 @@ class MoELayer(nn.Module):
         # 恢复原始形状
         final_output = final_output.view(
             *original_shape[:-1], self.output_size)
-        self.top_k_indices = top_k_indices.view(
-            original_shape[:-1] + (self.k,))
-
         if self.training and not self.use_aux_loss:
-            self._update_expert_biases()
+            current_top_k = top_k_indices.view(original_shape[:-1] + (self.k,))
+            self._update_expert_biases(current_top_k)
 
         return final_output
 
