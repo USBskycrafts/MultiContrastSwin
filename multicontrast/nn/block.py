@@ -1,3 +1,5 @@
+from torch import Tensor
+from torch import nn
 import functools
 import operator
 from re import A
@@ -7,7 +9,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from torch.nn.utils import spectral_norm
 
 from .utils import *
 
@@ -130,7 +131,7 @@ class MoELayer(nn.Module):
         if not use_aux_loss:
             self.expert_biases = nn.Parameter(torch.zeros(num_experts))
 
-    def _update_expert_biases(self, top_k_indices, update_rate=1e-5):
+    def _update_expert_biases(self, top_k_indices, update_rate=1e-3):
         # 跨进程聚合专家选择
         expert_counts = torch.bincount(
             top_k_indices.flatten(), minlength=self.num_experts).to(self.expert_biases.device)
@@ -358,15 +359,17 @@ class ImageEncoding(nn.Module):
 
         self.inc = nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.BatchNorm2d(out_channels),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, out_channels),
         )
 
         self.convs = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.Conv2d(out_channels, 4 * out_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm2d(out_channels * 4),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, out_channels),
-            nn.Conv2d(out_channels, out_channels, 5, 1, 2),
+            nn.Conv2d(out_channels * 4, out_channels, 5, 1, 2, bias=False),
+            nn.SiLU(inplace=True),
+            nn.BatchNorm2d(out_channels),
         )
 
     def forward(self, x):
@@ -383,12 +386,12 @@ class ImageDecoding(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.Conv2d(in_channels, in_channels * 4, 5, 1, 2, bias=False),
+            nn.BatchNorm2d(in_channels * 4),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, in_channels),
-            nn.Conv2d(in_channels, in_channels, 5, 1, 2),
+            nn.Conv2d(4 * in_channels, in_channels, 5, 1, 2, bias=False),
+            nn.BatchNorm2d(in_channels),
             nn.SiLU(inplace=True),
-            nn.GroupNorm(4, in_channels),
         )
 
         self.outc = nn.Sequential(
@@ -406,32 +409,21 @@ class ImageDecoding(nn.Module):
 class MultiContrastImageEncoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-
+        self.num_contrasts = num_contrasts
+        self.embeddings = nn.Parameter(torch.randn(num_contrasts, in_channels))
         self.encodings = ImageEncoding(in_channels, out_channels)
 
     def forward(self, x, selected_contrats):
+        x = x + self.embeddings[selected_contrats, :][:, None, None, :]
         return self.encodings(x)
 
 
 class MultiContrastImageDecoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-
+        self.embeddings = nn.Parameter(torch.randn(num_contrasts, in_channels))
         self.decodings = ImageDecoding(in_channels, out_channels)
 
     def forward(self, x, selected_contrats: List[int]):
+        x = x + self.embeddings[selected_contrats, :][:, None, None, :]
         return self.decodings(x)
-
-
-class SpectralNormConv2d(nn.Module):
-    """谱归一化卷积层 + LeakyReLU"""
-
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0):
-        super().__init__()
-        self.conv = spectral_norm(
-            nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
-        )
-        self.leaky_relu = nn.LeakyReLU(0.2, inplace=True)
-
-    def forward(self, x):
-        return self.leaky_relu(self.conv(x))
