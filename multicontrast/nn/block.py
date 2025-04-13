@@ -373,12 +373,10 @@ class ImageEncoding(nn.Module):
         )
 
     def forward(self, x):
-        # x: [B, M, H, W, C]
-        B, M, H, W, C = x.size()
-        x = x.permute(0, 1, 4, 2, 3).view(-1, C, H, W).contiguous()
+        x = x.permute(0, 3, 1, 2).contiguous()
         x = self.inc(x)
         x = x + self.convs(x)
-        return x.view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
+        return x.permute(0, 2, 3, 1).contiguous()
 
 
 class ImageDecoding(nn.Module):
@@ -400,31 +398,32 @@ class ImageDecoding(nn.Module):
         )
 
     def forward(self, x):
-        B, M, H, W, C = x.size()
-        x = x.permute(0, 1, 4, 2, 3).contiguous().view(-1, C, H, W)
+        x = x.permute(0, 3, 1, 2).contiguous()
         x = self.convs(x) + x
-        return self.outc(x).view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
+        return self.outc(x).permute(0, 2, 3, 1).contiguous()
 
 
 class MultiContrastImageEncoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-        self.num_contrasts = num_contrasts
-        self.embeddings = nn.Parameter(
-            torch.randn(num_contrasts, out_channels))
-        self.encodings = ImageEncoding(in_channels, out_channels)
+
+        self.encodings = nn.ModuleList(
+            [ImageEncoding(in_channels, out_channels)
+             for _ in range(num_contrasts)]
+        )
 
     def forward(self, x, selected_contrats):
-        x = self.encodings(x)
-        return x + self.embeddings[selected_contrats, :][:, None, None, :]
+        return torch.stack([self.encodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
 
 
 class MultiContrastImageDecoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-        self.embeddings = nn.Parameter(torch.randn(num_contrasts, in_channels))
-        self.decodings = ImageDecoding(in_channels, out_channels)
+
+        self.decodings = nn.ModuleList(
+            [ImageDecoding(in_channels, out_channels)
+             for _ in range(num_contrasts)]
+        )
 
     def forward(self, x, selected_contrats: List[int]):
-        x = x + self.embeddings[selected_contrats, :][:, None, None, :]
-        return self.decodings(x)
+        return torch.stack([self.decodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
