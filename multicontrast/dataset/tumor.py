@@ -26,7 +26,6 @@ class MultiModalMRIDataset(Dataset):
         self.modalities = modalities
         self.slice_axis = slice_axis
         self.transform = transform
-        np.random.seed(114514)
 
         # 收集有效样本路径
         self.sample_paths = [os.path.join(root_dir, d)

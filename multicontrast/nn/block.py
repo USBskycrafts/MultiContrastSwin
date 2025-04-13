@@ -410,12 +410,13 @@ class MultiContrastImageEncoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
         self.num_contrasts = num_contrasts
-        self.embeddings = nn.Parameter(torch.randn(num_contrasts, in_channels))
+        self.embeddings = nn.Parameter(
+            torch.randn(num_contrasts, out_channels))
         self.encodings = ImageEncoding(in_channels, out_channels)
 
     def forward(self, x, selected_contrats):
-        x = x + self.embeddings[selected_contrats, :][:, None, None, :]
-        return self.encodings(x)
+        x = self.encodings(x)
+        return x + self.embeddings[selected_contrats, :][:, None, None, :]
 
 
 class MultiContrastImageDecoding(nn.Module):
