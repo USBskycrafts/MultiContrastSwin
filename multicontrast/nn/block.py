@@ -358,7 +358,7 @@ class ImageEncoding(nn.Module):
         super().__init__()
 
         self.inc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
+            nn.Conv2d(in_channels, out_channels, 7, 1, 3, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.SiLU(inplace=True),
         )
