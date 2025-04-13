@@ -368,8 +368,8 @@ class ImageEncoding(nn.Module):
             nn.BatchNorm2d(out_channels * 4),
             nn.SiLU(inplace=True),
             nn.Conv2d(out_channels * 4, out_channels, 5, 1, 2, bias=False),
-            nn.SiLU(inplace=True),
             nn.BatchNorm2d(out_channels),
+            nn.SiLU(inplace=True),
         )
 
     def forward(self, x):
