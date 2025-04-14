@@ -178,7 +178,6 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
             # generated_contrasts = sorted(generated_contrasts)
         else:
             generated_contrasts = self.generated_contrasts
-
         return {
             'x': batch[:, selected_contrasts],
             'y': batch[:, generated_contrasts],

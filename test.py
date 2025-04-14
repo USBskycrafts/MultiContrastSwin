@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint_path', type=str, required=True)
     parser.add_argument('--gpus', nargs='+', type=int, default=None)
+    parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(
