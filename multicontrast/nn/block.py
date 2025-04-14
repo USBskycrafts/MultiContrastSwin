@@ -358,25 +358,22 @@ class ImageEncoding(nn.Module):
         super().__init__()
 
         self.inc = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 7, 1, 3, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.SiLU(inplace=True),
+            nn.Conv2d(in_channels, out_channels, 7, 1, 3),
         )
 
         self.convs = nn.Sequential(
-            nn.Conv2d(out_channels, 4 * out_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm2d(out_channels * 4),
+            nn.Conv2d(out_channels, 4 * out_channels, 5, 1, 2),
+            nn.GroupNorm(16, out_channels * 4),
             nn.SiLU(inplace=True),
-            nn.Conv2d(out_channels * 4, out_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.SiLU(inplace=True),
+            nn.Conv2d(out_channels * 4, out_channels, 5, 1, 2),
         )
 
     def forward(self, x):
-        x = x.permute(0, 3, 1, 2).contiguous()
+        B, M, H, W, C = x.size()
+        x = x.permute(0, 1, 4, 2, 3).view(-1, C, H, W).contiguous()
         x = self.inc(x)
         x = x + self.convs(x)
-        return x.permute(0, 2, 3, 1).contiguous()
+        return x.view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
 
 
 class ImageDecoding(nn.Module):
@@ -384,12 +381,10 @@ class ImageDecoding(nn.Module):
         super().__init__()
 
         self.convs = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels * 4, 5, 1, 2, bias=False),
-            nn.BatchNorm2d(in_channels * 4),
+            nn.Conv2d(in_channels, in_channels * 4, 5, 1, 2),
+            nn.GroupNorm(16, in_channels * 4),
             nn.SiLU(inplace=True),
-            nn.Conv2d(4 * in_channels, in_channels, 5, 1, 2, bias=False),
-            nn.BatchNorm2d(in_channels),
-            nn.SiLU(inplace=True),
+            nn.Conv2d(4 * in_channels, in_channels, 5, 1, 2),
         )
 
         self.outc = nn.Sequential(
@@ -398,32 +393,31 @@ class ImageDecoding(nn.Module):
         )
 
     def forward(self, x):
-        x = x.permute(0, 3, 1, 2).contiguous()
+        B, M, H, W, C = x.size()
+        x = x.permute(0, 1, 4, 2, 3).contiguous().view(-1, C, H, W)
         x = self.convs(x) + x
-        return self.outc(x).permute(0, 2, 3, 1).contiguous()
+        return self.outc(x).view(B, M, -1, H, W).permute(0, 1, 3, 4, 2).contiguous()
 
 
 class MultiContrastImageEncoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-
-        self.encodings = nn.ModuleList(
-            [ImageEncoding(in_channels, out_channels)
-             for _ in range(num_contrasts)]
-        )
+        self.num_contrasts = num_contrasts
+        self.embeddings = nn.Parameter(
+            torch.randn(num_contrasts, out_channels))
+        self.encodings = ImageEncoding(in_channels, out_channels)
 
     def forward(self, x, selected_contrats):
-        return torch.stack([self.encodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
+        x = self.encodings(x)
+        return x + self.embeddings[selected_contrats, :][:, None, None, :]
 
 
 class MultiContrastImageDecoding(nn.Module):
     def __init__(self, in_channels, out_channels, num_contrasts):
         super().__init__()
-
-        self.decodings = nn.ModuleList(
-            [ImageDecoding(in_channels, out_channels)
-             for _ in range(num_contrasts)]
-        )
+        self.embeddings = nn.Parameter(torch.randn(num_contrasts, in_channels))
+        self.decodings = ImageDecoding(in_channels, out_channels)
 
     def forward(self, x, selected_contrats: List[int]):
-        return torch.stack([self.decodings[offset](x[:, i, ...]) for i, offset in enumerate(selected_contrats)], dim=1)
+        x = x + self.embeddings[selected_contrats, :][:, None, None, :]
+        return self.decodings(x)
