@@ -6,6 +6,7 @@ import nibabel as nib
 import numpy as np
 import torch
 import torch.distributed
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 
@@ -78,9 +79,7 @@ class MultiModalMRIDataset(Dataset):
             img = nib.nifti1.load(file_path)
             img = nib.funcs.as_closest_canonical(img)
             data = img.get_fdata(dtype=np.float32)
-            if modality == 'seg':
-                data = np.where(data == 1.0, 1, -1)
-            else:
+            if 'seg' not in modality:
                 data = self._normalize(data)
             volumes.append(data)
         assert len(volumes) == len(
@@ -163,7 +162,7 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
         batch = batch[:, :, 40:-40, -226:-34, :]
         batch = torch.rot90(batch, k=1, dims=[2, 3])
 
-        num_contrasts = len(self.modalities)
+        num_contrasts = len(self.modalities) - 1
 
         if self.selected_contrasts is None:
             selected_contrasts = np.random.choice(
@@ -178,9 +177,15 @@ class MultiModalGenerationDataset(MultiModalMRIDataset):
             # generated_contrasts = sorted(generated_contrasts)
         else:
             generated_contrasts = self.generated_contrasts
+
+        seg = batch[:, -1:, :, :, :].clone()
+        seg = torch.where(seg == 4, 3, seg)
+        seg = seg.type(torch.long)
+
         return {
             'x': batch[:, selected_contrasts],
             'y': batch[:, generated_contrasts],
+            'seg': seg,
             'selected_contrasts': selected_contrasts,
             'generated_contrasts': generated_contrasts,
             'idx': idx,

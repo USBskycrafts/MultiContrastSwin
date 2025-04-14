@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 from ignite.utils import setup_logger
 
-from multicontrast.nn.loss import CustomLPIPS, L1Loss
+from multicontrast.nn.loss import CustomLPIPS, DiceLoss, FocalLoss, L1Loss
 from multicontrast.nn.model import (MultiContrastSwinTransformer,
-                                    MultiScaleDiscriminator)
+                                    MultiScaleDiscriminator, UNet)
 
 
 class BaseModel(nn.Module):
@@ -67,30 +67,26 @@ class MultiModalityGeneration(BaseModel):
 class MultiContrastDiscrimination(BaseModel):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.model = MultiScaleDiscriminator(
-            input_nc=1, ndf=64, n_layers=3, num_scales=3)
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        self.model = UNet(
+            n_channels=1,
+            n_classes=4,
+        )
+        self.focal_loss = FocalLoss()
+        self.dice_loss = DiceLoss()
 
     def _reshape_input(self, x):
         # x: (B, M, H, W, C)
         B, M, H, W, C = x.shape
-        assert C == 1, "Input channels must be 1"
         return x.permute(0, 1, 4, 2, 3).contiguous()\
             .view(-1, C, H, W)
 
-    def loss(self, x, generated_contrasts, label):
+    def loss(self, x, label):
+        label = label.expand(-1, x.shape[1], -1, -1, -1)
+        label = self._reshape_input(label).squeeze(1)  # (B*M, H, W)
         x = self._reshape_input(x)  # (B*M, C, H, W)
-        preds = self.model(x)
-        # label: tensor(1.0) or tensor(0.0)
-        # Flatten predictions for loss calculation
-        preds = [pred.flatten() for pred in preds]
-        # Concatenate predictions for loss calculation
-        preds = torch.cat(preds, dim=0)
-        # Expand label to match predictions shape
-        label = label.expand_as(preds)
-        loss = self.loss_fn(preds, label)  # Calculate loss
-        return loss
+        predict = self.model(x)
+        return self.focal_loss(predict, label) + self.dice_loss(predict, label, multiclass=True)
 
-    def predict(self, x, generated_contrasts):
+    def predict(self, x):
         x = self._reshape_input(x)  # (B*M, C, H, W)
         return self.model(x)

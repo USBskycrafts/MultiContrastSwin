@@ -177,20 +177,11 @@ class GANTrainer(BaseTrainer):
         self.generator.train()
         x = batch['x'].to(distributed.device())
         y = batch['y'].to(distributed.device())
+        seg = batch['seg'].to(distributed.device())
         self.d_optim.zero_grad()
 
-        real_label = torch.tensor(1.0).to(distributed.device())
-        fake_label = torch.tensor(0.0).to(distributed.device())
         with autocast(dtype=torch.float16):
-            g_per_loss, fake = self.generator(x,
-                                              batch['selected_contrasts'],
-                                              batch['generated_contrasts'],
-                                              y)
-            real_loss = self.discriminator(
-                y, batch['generated_contrasts'], real_label)
-            fake_loss = self.discriminator(
-                fake.detach(), batch['generated_contrasts'], fake_label)
-        d_loss = (real_loss + fake_loss) / 2
+            d_loss = self.discriminator(y, seg)
         scaler_loss = self.d_scaler.scale(d_loss)
         # if not isinstance(scaler_loss, torch.Tensor):
         #     raise RuntimeError(
@@ -203,11 +194,11 @@ class GANTrainer(BaseTrainer):
 
         self.g_optim.zero_grad()
         with autocast(dtype=torch.float16):
-            g_against_loss = self.discriminator(
-                fake,
-                batch['generated_contrasts'],
-                real_label
-            )
+            g_per_loss, fake = self.generator(x,
+                                              batch['selected_contrasts'],
+                                              batch['generated_contrasts'],
+                                              y)
+            g_against_loss = self.discriminator(fake, seg)
         g_loss = g_per_loss + g_against_loss * 0.1
         scaled_loss = self.g_scaler.scale(g_loss)
         # if not isinstance(scaled_loss, torch.Tensor):
@@ -221,8 +212,7 @@ class GANTrainer(BaseTrainer):
 
         return torch.tensor([g_per_loss.item(),
                              g_against_loss.item(),
-                             real_loss.item(),
-                             fake_loss.item()])
+                             d_loss.item()])
 
     def _validate_step(self, batch):
         self.generator.eval()
