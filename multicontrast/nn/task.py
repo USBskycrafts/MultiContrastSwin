@@ -49,21 +49,19 @@ class MultiModalityGeneration(BaseModel):
                                L1 Weight: {self.l1_weight}
                                L1 Loss {self.l1_log} 
                                Perceptual Loss {self.per_log} 
-                               Quantization  Loss {self.q_log} 
                          ''')
 
     def loss(self, x, selected_contrasts, generated_contrasts, y, sample_times=1):
-        q_loss, pred = self.model(
+        pred = self.model(
             x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
         l1_loss = self.l1_loss(pred, y)
         percep_loss = self.percep_loss(pred, y).mean()
         self.l1_log = l1_loss.item()
         self.per_log = percep_loss.item()
-        self.q_log = q_loss.item()
-        return l1_loss * self.l1_weight + percep_loss + q_loss, pred
+        return l1_loss * self.l1_weight + percep_loss, pred
 
     def predict(self, x, selected_contrasts: List[int], generated_contrasts, sample_times=1):
-        return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)[1]
+        return self.model(x, [selected_contrasts, generated_contrasts], sample_times=sample_times)
 
 
 class MultiContrastDiscrimination(BaseModel):

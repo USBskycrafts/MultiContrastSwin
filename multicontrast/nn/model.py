@@ -31,7 +31,7 @@ class MultiContrastSwinTransformer(nn.Module):
         )
 
         self.quantizers = nn.ModuleList([
-            VectorQuantizer(1024, dim * (1 << i) * patch_size ** 4, 0.25)
+            VectorQuantizer(2048)
             for i in range(num_layers)
         ])
 
@@ -55,17 +55,15 @@ class MultiContrastSwinTransformer(nn.Module):
         seeds = seeds.expand(B, -1, H, W, -1)  # 减少内存复制
         quantized_features = []
 
-        loss = 0
         for encoded_feature, qt in zip(encoded_features, reversed(self.quantizers)):
-            q_loss, z_q, *_ = qt(encoded_feature)
+            z_q = qt(encoded_feature)
             quantized_features.append(z_q)
-            loss += q_loss
 
         encoded_features = quantized_features
         decoded_features = self.decoder(
             seeds, encoded_features, selected_contrats)
         y = self.image_decoding(decoded_features, selected_contrats[1])
-        return loss, y
+        return y
 
 
 class MultiContrastDiscriminator(nn.Module):

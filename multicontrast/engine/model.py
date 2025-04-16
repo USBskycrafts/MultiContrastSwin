@@ -81,8 +81,8 @@ class MultiContrastGeneration(Model):
                                          self.optimizer)
 
         scheduler = CosineAnnealingScheduler(self.optimizer, "lr",
-                                             self.learning_rate, self.learning_rate * 0.01, 2000,
-                                             cycle_mult=2)
+                                             self.learning_rate, 0, 2000,
+                                             cycle_mult=1.0)
         scheduler = create_lr_scheduler_with_warmup(
             scheduler,
             warmup_start_value=0.0,
@@ -214,7 +214,7 @@ class MultiContrastGANGeneration(Model):
                                   self.g_optim,
                                   self.d_optim)
         g_sche = CosineAnnealingScheduler(self.g_optim, "lr",
-                                          self.g_lr, self.d_lr * 0.01, 2000, 2)
+                                          self.g_lr, 0, 2000)
         g_sche = create_lr_scheduler_with_warmup(
             g_sche,
             warmup_start_value=0.0,
@@ -224,7 +224,7 @@ class MultiContrastGANGeneration(Model):
         self.trainer.register_events(Events.ITERATION_STARTED, g_sche)
         # --------------------------------------------------------------------
         d_sche = CosineAnnealingScheduler(self.d_optim, "lr",
-                                          self.d_lr, self.d_lr * 0.01, 2000, 2)
+                                          self.d_lr, 0, 2000)
         d_sche = create_lr_scheduler_with_warmup(
             d_sche,
             warmup_start_value=0.0,
